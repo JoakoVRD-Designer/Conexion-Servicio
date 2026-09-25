@@ -1,0 +1,6 @@
+node_modules/
+.env
+# Datos de clientes y trabajos entregados: nunca al repositorio
+data/
+sites/
+*.tmp

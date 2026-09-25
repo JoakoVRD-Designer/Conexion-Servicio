@@ -1,0 +1,21 @@
+{
+  "name": "conexion-servicio",
+  "version": "1.0.0",
+  "description": "Panel multi-tienda para vender el servicio de creación de páginas web (Fiverr + tiendas propias), con IA que administra pedidos, redacta respuestas y genera/modifica los sitios.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "cli": "node src/cli.js",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "express": "^5.2.1"
+  }
+}
