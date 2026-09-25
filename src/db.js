@@ -61,6 +61,7 @@ export function createOrder(input) {
       name: clean(input.clientName, 120),
       email: clean(input.clientEmail, 200),
       phone: clean(input.clientPhone, 40),
+      discord: clean(input.clientDiscord, 60),
       username: clean(input.clientUsername, 100),
       country: clean(input.clientCountry, 60),
     },

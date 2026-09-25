@@ -117,3 +117,21 @@ test("cobro directo por PayPal en tiendas propias, nunca en marketplaces", async
   const denied = await post("/admin/pedidos/WEB-0002/cobro", {}, { ...auth, origin: base });
   assert.match(decodeURIComponent(denied.headers.get("location")), /dentro de la plataforma/);
 });
+
+test("Discord se ofrece solo a clientes directos, nunca en marketplaces", async () => {
+  const { getCatalog } = await import("../src/config.js");
+  getCatalog().contact.discordInvite = "https://discord.gg/abc123";
+  const res = await post("/s/profesionales/pedido", {
+    packageId: "basico", clientName: "Leo", clientEmail: "leo@example.com", clientDiscord: "leo#77",
+    businessName: "Estudio Leo", description: "Web de presentación",
+  });
+  const portalUrl = res.headers.get("location").replace(/\?.*/, "");
+  assert.match(await (await fetch(base + portalUrl)).text(), /discord\.gg\/abc123/);
+
+  const { listOrders, getOrder } = await import("../src/db.js");
+  const leo = listOrders({ q: "Estudio Leo" })[0];
+  assert.match(await (await fetch(`${base}/admin/pedidos/${leo.id}`, { headers: auth })).text(), /leo#77/);
+
+  const fiverr = getOrder("WEB-0002");
+  assert.ok(!(await (await fetch(`${base}/o/${fiverr.token}`)).text()).includes("discord"));
+});

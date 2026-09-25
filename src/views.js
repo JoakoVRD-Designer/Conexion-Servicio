@@ -62,6 +62,7 @@ ${isFiverr
     <div class="row"><label>Tu nombre<input name="clientName" required maxlength="120" value="${form.clientName || ""}"></label>
       <label>Email<input type="email" name="clientEmail" required maxlength="200" value="${form.clientEmail || ""}"></label></div>
     <div class="row"><label>WhatsApp / teléfono<input name="clientPhone" maxlength="40" value="${form.clientPhone || ""}" placeholder="+54 9 11 1234 5678"></label>
+      <label>Usuario de Discord (opcional)<input name="clientDiscord" maxlength="60" value="${form.clientDiscord || ""}"></label>
       <label>País<input name="clientCountry" maxlength="60" value="${form.clientCountry || ""}"></label></div>
     <div class="row"><label>Nombre del negocio<input name="businessName" required maxlength="200" value="${form.businessName || ""}"></label>
       <label>Rubro<input name="businessType" maxlength="200" value="${form.businessType || ""}" placeholder="${store.niche}"></label></div>
@@ -90,6 +91,7 @@ ${order.status === "cancelado" ? html`<p>${badge("cancelado")}</p>` : html`<ol c
 ${order.site.versions.length ? html`<p><a class="btn secondary" href="/o/${order.token}/preview" target="_blank">Ver la vista previa de tu web ↗</a></p>` : ""}
 </section>
 ${portalPayment(order)}
+${portalDiscord(order)}
 <section class="card"><h2>Mensajes</h2>${messageList(order.messages, "cliente")}
 <form method="post" action="/o/${order.token}/mensaje" class="form"><label>Escríbenos (cambios, dudas, textos, fotos por enlace...)<textarea name="text" rows="4" required maxlength="8000"></textarea></label><button class="btn">Enviar mensaje</button></form></section>`,
   });
@@ -107,6 +109,14 @@ function portalPayment(order) {
   <div class="actions">${options.map((o) => html`<a class="btn" href="${o.url}" target="_blank" rel="noopener">${o.label}</a>`)}</div>
   ${instructions ? html`<pre class="summary">${instructions}</pre>` : ""}
   <p class="muted small">Cuando pagues, escríbenos abajo para confirmarlo.</p></section>`;
+}
+
+function portalDiscord(order) {
+  const invite = getCatalog().contact.discordInvite;
+  if (isMarketplace(order.channel) || !invite || !/^https:\/\/(discord\.gg|discord\.com)\//i.test(invite)) return "";
+  return html`<section class="card"><h2>¿Prefieres hablar por Discord?</h2>
+  <p>Únete a nuestro servidor y escríbenos mencionando tu pedido <b>${order.id}</b>.</p>
+  <a class="btn discord" href="${invite}" target="_blank" rel="noopener">Unirme a Discord</a></section>`;
 }
 
 function adminPayment(order) {
@@ -203,7 +213,8 @@ ${f.imported ? html`<p class="alert ok">Datos extraídos por la IA. Revísalos a
   <div class="row"><label>Usuario en la plataforma<input name="clientUsername" value="${f.clientUsername || ""}"></label>
     <label>Nombre del cliente<input name="clientName" value="${f.clientName || ""}"></label></div>
   <div class="row"><label>Email (no para clientes de marketplaces)<input name="clientEmail" type="email" value="${f.clientEmail || ""}"></label>
-    <label>WhatsApp (no para clientes de marketplaces)<input name="clientPhone" value="${f.clientPhone || ""}"></label></div>
+    <label>WhatsApp (no para clientes de marketplaces)<input name="clientPhone" value="${f.clientPhone || ""}"></label>
+    <label>Discord (no para clientes de marketplaces)<input name="clientDiscord" value="${f.clientDiscord || ""}"></label></div>
   <div class="row"><label>Comisión % (vacío = automática según canal)<input name="feePercent" type="number" step="0.1" min="0" max="100" value="${f.feePercent ?? ""}"></label><span></span></div>
   <div class="row"><label>País<input name="clientCountry" value="${f.clientCountry || ""}"></label><label>Fecha de entrega<input name="deadline" type="date" value="${f.deadline || ""}"></label></div>
   <div class="row"><label>Negocio<input name="businessName" value="${f.businessName || ""}"></label><label>Rubro<input name="businessType" value="${f.businessType || ""}"></label></div>
@@ -251,7 +262,7 @@ ${job ? html`<p class="alert ${job.status === "error" ? "error" : job.status ===
 <div class="cols">
 <div>
 <section class="card"><h2>Cliente</h2><dl>
-  ${field("Nombre", c.name)}${field("Usuario", c.username)}${field("Email", c.email)}${field("WhatsApp / tel.", c.phone)}${field("País", c.country)}</dl>
+  ${field("Nombre", c.name)}${field("Usuario", c.username)}${field("Email", c.email)}${field("WhatsApp / tel.", c.phone)}${field("Discord", c.discord)}${field("País", c.country)}</dl>
   <div class="actions">${contactLinks(order)}</div>
   ${isMarketplace(order.channel) ? html`<p class="muted small">Pedido de ${CHANNELS[order.channel] ?? order.channel}: comunícate, cobra y entrega dentro de la plataforma (sus reglas prohíben llevar al cliente fuera). Aquí registras la conversación y usas la IA para redactar.</p>`
     : html`<p class="muted small">Portal del cliente (envíaselo): <a href="${portal}" target="_blank">${portal}</a></p>`}

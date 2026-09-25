@@ -73,6 +73,14 @@ Además, el bloque `payments` (común a todas las tiendas propias) define cómo 
 }
 ```
 
+Para ofrecer **Discord** como canal de comunicación a tus clientes directos, completa el bloque `contact`:
+
+```json
+"contact": { "discordInvite": "https://discord.gg/tu-invitacion", "discordUser": "tuusuario" }
+```
+
+El portal del cliente muestra el botón “Unirme a Discord” y la IA puede ofrecerlo en sus mensajes, **solo en pedidos de tiendas propias o contacto directo** (nunca en Fiverr u otros marketplaces, cuyos sistemas detectan y sancionan estos intentos). El formulario de pedido también pide el usuario de Discord del cliente (opcional).
+
 Reinicia el servidor después de editarlo.
 
 ## Cobrar sin comisión de plataforma
@@ -128,7 +136,7 @@ Comandos de la CLI: `npm run cli -- ayuda`.
 
 - **No se cobra por fuera.** Todo cliente que te conoció en Fiverr paga por Fiverr (ver “Cobrar sin comisión de plataforma”).
 - **Una sola cuenta de vendedor por persona.** Abrir varias cuentas de Fiverr puede hacer que te las cierren todas. Para tener “varias tiendas” en Fiverr crea **varios gigs** en tu cuenta (uno por nicho: restaurantes, profesionales, landing pages, e-commerce…; el número de gigs activos depende de tu nivel de vendedor) y usa las **tiendas propias** de este sistema y otras plataformas (Workana, Upwork…) como canales adicionales.
-- **La comunicación de clientes de Fiverr debe quedarse en Fiverr.** No pidas email/WhatsApp. Por eso, en pedidos de Fiverr el panel no ofrece WhatsApp/email ni enlaces de pago: registras la conversación aquí, usas la IA para redactar y envías por el chat de Fiverr. La IA ya tiene esta regla incorporada.
+- **La comunicación de clientes de Fiverr debe quedarse en Fiverr.** No pidas email, WhatsApp ni Discord (Fiverr detecta esas palabras en el chat y puede advertirte o suspenderte). Por eso, en pedidos de Fiverr el panel no ofrece WhatsApp/email ni enlaces de pago: registras la conversación aquí, usas la IA para redactar y envías por el chat de Fiverr. La IA ya tiene esta regla incorporada.
 - Fiverr no ofrece una API pública para vendedores, por eso los pedidos de Fiverr se importan pegando el texto (la IA extrae los datos).
 
 ## Publicar el sistema en internet

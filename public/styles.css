@@ -64,6 +64,7 @@ textarea { resize: vertical; }
 .btn.small { padding: 7px 12px; font-size: .9rem; }
 .btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 .btn.wa { background: #25d366; }
+.btn.discord { background: #5865f2; }
 .btn.ai { background: #7c3aed; }
 .btn[disabled] { opacity: .5; cursor: wait; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }

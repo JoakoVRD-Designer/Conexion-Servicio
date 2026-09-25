@@ -1,5 +1,10 @@
 {
   "currency": "USD",
+  "contact": {
+    "_ayuda": "Canales de contacto para clientes de tiendas propias y contacto directo. Nunca se muestran en pedidos de marketplaces (Fiverr, Workana, Upwork...).",
+    "discordInvite": "",
+    "discordUser": ""
+  },
   "payments": {
     "_ayuda": "Medios de pago directos (sin comisión de plataforma) para clientes de tus tiendas propias y contacto directo. Nunca se muestran en pedidos de Fiverr/Workana/Upwork.",
     "paypalMe": "",

@@ -65,7 +65,7 @@ export function getCatalog() {
       if (ids.has(s.id)) throw new Error(`Tienda duplicada en stores.json: ${s.id}`);
       ids.add(s.id);
     }
-    cache = { currency: raw.currency || "USD", payments: raw.payments || {}, stores: raw.stores };
+    cache = { currency: raw.currency || "USD", contact: raw.contact || {}, payments: raw.payments || {}, stores: raw.stores };
   }
   return cache;
 }
