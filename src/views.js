@@ -1,5 +1,6 @@
 // Plantillas HTML. Todo valor interpolado se escapa salvo que se marque con raw().
-import { STATUSES, CHANNELS, statusLabel, getStore, getPackage, getCatalog } from "./config.js";
+import { STATUSES, CHANNELS, statusLabel, getStore, getPackage, getCatalog, isMarketplace } from "./config.js";
+import { paymentStatus, paymentOptions, paymentInstructions } from "./payments.js";
 
 class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
 export const raw = (s) => new Raw(String(s));
@@ -86,12 +87,44 @@ export function clientPortal(order, flash) {
 ${flash ? html`<p class="alert ok">${flash}</p>` : ""}
 <section class="card"><p class="muted">Guarda este enlace: aquí verás el avance y podrás escribirnos.</p>
 ${order.status === "cancelado" ? html`<p>${badge("cancelado")}</p>` : html`<ol class="steps">${steps.map((s, i) => html`<li class="${i <= idx ? "done" : ""}">${s.label}</li>`)}</ol>`}
-${pkg?.paymentLink && order.status !== "completado" ? html`<p><a class="btn" href="${pkg.paymentLink}" target="_blank" rel="noopener">Pagar ${money(order.price)}</a></p>` : ""}
 ${order.site.versions.length ? html`<p><a class="btn secondary" href="/o/${order.token}/preview" target="_blank">Ver la vista previa de tu web ↗</a></p>` : ""}
 </section>
+${portalPayment(order)}
 <section class="card"><h2>Mensajes</h2>${messageList(order.messages, "cliente")}
 <form method="post" action="/o/${order.token}/mensaje" class="form"><label>Escríbenos (cambios, dudas, textos, fotos por enlace...)<textarea name="text" rows="4" required maxlength="8000"></textarea></label><button class="btn">Enviar mensaje</button></form></section>`,
   });
+}
+
+function portalPayment(order) {
+  if (isMarketplace(order.channel) || order.status === "cancelado") return "";
+  const st = paymentStatus(order);
+  if (st.next <= 0) return html`<section class="card"><h2>Pago</h2><p class="alert ok">Pago completo recibido. ¡Gracias!</p></section>`;
+  const options = paymentOptions(order, st.next);
+  const instructions = paymentInstructions(order);
+  if (!options.length && !instructions) return "";
+  return html`<section class="card"><h2>Pago</h2>
+  <p>Total ${money(order.price)} · pagado ${money(st.paid)} · <b>${st.isDeposit ? `anticipo (${st.depositPercent}%) para comenzar` : "pendiente"}: ${money(st.next)}</b></p>
+  <div class="actions">${options.map((o) => html`<a class="btn" href="${o.url}" target="_blank" rel="noopener">${o.label}</a>`)}</div>
+  ${instructions ? html`<pre class="summary">${instructions}</pre>` : ""}
+  <p class="muted small">Cuando pagues, escríbenos abajo para confirmarlo.</p></section>`;
+}
+
+function adminPayment(order) {
+  if (isMarketplace(order.channel)) {
+    return html`<section class="card"><h2>Cobro</h2><p class="muted">Pedido de ${CHANNELS[order.channel] ?? order.channel}: se cobra dentro de la plataforma (comisión ${order.feePercent}%). Ofrecer pago externo va contra sus reglas y puede suspender tu cuenta.</p></section>`;
+  }
+  const st = paymentStatus(order);
+  const today = new Date().toISOString().slice(0, 10);
+  return html`<section class="card"><h2>Cobro directo</h2>
+  <p>Total ${money(order.price)} · cobrado <b>${money(st.paid)}</b> · saldo <b>${money(st.due)}</b></p>
+  ${st.next > 0 ? html`<form method="post" action="/admin/pedidos/${order.id}/cobro" class="actions"><button class="btn small">💳 Preparar mensaje de cobro (${st.isDeposit ? `anticipo ${st.depositPercent}%` : "saldo"}: ${money(st.next)})</button></form>` : html`<p class="alert ok">Pagado por completo.</p>`}
+  <form method="post" action="/admin/pedidos/${order.id}/pago" class="form"><div class="row">
+    <label>Monto recibido<input name="amount" type="number" step="0.01" min="0.01" required value="${st.next || ""}"></label>
+    <label>Medio<select name="method">${["PayPal", "Mercado Pago", "Transferencia", "Stripe", "Efectivo", "Otro"].map((m) => html`<option>${m}</option>`)}</select></label></div>
+    <label>Nota (nº de operación, fecha…)<input name="note" maxlength="500" placeholder="${today}"></label>
+    <button class="btn small secondary">Registrar pago recibido</button></form>
+  ${(order.payments ?? []).length ? html`<ul class="versions">${order.payments.map((p) => html`<li>${date(p.at)} · ${money(p.amount)} · ${p.method}${p.note ? ` — ${p.note}` : ""}</li>`)}</ul>` : ""}
+  </section>`;
 }
 
 function messageList(messages, viewer) {
@@ -119,6 +152,8 @@ export function dashboard({ stats, orders, stores, filters }) {
   <div class="kpi"><span>Mensajes sin leer</span><b>${stats.unread}</b></div>
   <div class="kpi"><span>Ganado (neto de comisiones)</span><b>${money(stats.earnedNet)}</b></div>
   <div class="kpi"><span>Por cobrar (en curso)</span><b>${money(stats.pipelineGross)}</b></div>
+  <div class="kpi"><span>Cobrado directo (sin comisión de plataforma)</span><b>${money(stats.collected)}</b></div>
+  <div class="kpi"><span>Saldo por cobrar (directo)</span><b>${money(stats.outstanding)}</b></div>
 </section>
 <section class="card"><form class="filters" method="get" action="/admin">
   <input name="q" placeholder="Buscar cliente, negocio, nº Fiverr..." value="${filters.q || ""}">
@@ -167,8 +202,9 @@ ${f.imported ? html`<p class="alert ok">Datos extraídos por la IA. Revísalos a
     <label>Precio real cobrado<input name="price" type="number" step="0.01" min="0" value="${f.price ?? ""}" placeholder="vacío = precio del paquete"></label></div>
   <div class="row"><label>Usuario en la plataforma<input name="clientUsername" value="${f.clientUsername || ""}"></label>
     <label>Nombre del cliente<input name="clientName" value="${f.clientName || ""}"></label></div>
-  <div class="row"><label>Email (solo si NO es de Fiverr)<input name="clientEmail" type="email" value="${f.clientEmail || ""}"></label>
-    <label>WhatsApp (solo si NO es de Fiverr)<input name="clientPhone" value="${f.clientPhone || ""}"></label></div>
+  <div class="row"><label>Email (no para clientes de marketplaces)<input name="clientEmail" type="email" value="${f.clientEmail || ""}"></label>
+    <label>WhatsApp (no para clientes de marketplaces)<input name="clientPhone" value="${f.clientPhone || ""}"></label></div>
+  <div class="row"><label>Comisión % (vacío = automática según canal)<input name="feePercent" type="number" step="0.1" min="0" max="100" value="${f.feePercent ?? ""}"></label><span></span></div>
   <div class="row"><label>País<input name="clientCountry" value="${f.clientCountry || ""}"></label><label>Fecha de entrega<input name="deadline" type="date" value="${f.deadline || ""}"></label></div>
   <div class="row"><label>Negocio<input name="businessName" value="${f.businessName || ""}"></label><label>Rubro<input name="businessType" value="${f.businessType || ""}"></label></div>
   <label>Descripción / requisitos<textarea name="description" rows="5">${f.description || ""}</textarea></label>
@@ -187,6 +223,8 @@ function contactLinks(order) {
   const links = [];
   if (order.channel === "fiverr") {
     if (c.username) links.push(html`<a class="btn small" href="https://www.fiverr.com/inbox/${encodeURIComponent(c.username)}" target="_blank" rel="noopener">Abrir chat en Fiverr</a>`);
+  } else if (isMarketplace(order.channel)) {
+    // Otros marketplaces: el contacto se hace desde su propio chat.
   } else {
     if (digits(c.phone)) links.push(html`<a class="btn small wa" href="https://wa.me/${digits(c.phone)}?text=${encodeURIComponent(draft)}" target="_blank" rel="noopener">WhatsApp</a>`);
     if (c.email) links.push(html`<a class="btn small secondary" href="mailto:${c.email}?subject=${encodeURIComponent(`Tu pedido ${order.id}`)}&body=${encodeURIComponent(draft)}">Email</a>`);
@@ -215,16 +253,17 @@ ${job ? html`<p class="alert ${job.status === "error" ? "error" : job.status ===
 <section class="card"><h2>Cliente</h2><dl>
   ${field("Nombre", c.name)}${field("Usuario", c.username)}${field("Email", c.email)}${field("WhatsApp / tel.", c.phone)}${field("País", c.country)}</dl>
   <div class="actions">${contactLinks(order)}</div>
-  ${order.channel === "fiverr" ? html`<p class="muted small">Pedido de Fiverr: comunícate y entrega por Fiverr (sus reglas prohíben llevar al cliente fuera de la plataforma). Aquí registras la conversación y usas la IA para redactar.</p>`
+  ${isMarketplace(order.channel) ? html`<p class="muted small">Pedido de ${CHANNELS[order.channel] ?? order.channel}: comunícate, cobra y entrega dentro de la plataforma (sus reglas prohíben llevar al cliente fuera). Aquí registras la conversación y usas la IA para redactar.</p>`
     : html`<p class="muted small">Portal del cliente (envíaselo): <a href="${portal}" target="_blank">${portal}</a></p>`}
 </section>
+${adminPayment(order)}
 <section class="card"><h2>Brief</h2><dl>
   ${field("Negocio", b.businessName)}${field("Rubro", b.businessType)}${field("Descripción", b.description)}${field("Secciones", b.sections)}${field("Colores / estilo", b.colors)}${field("Referencias", b.references)}${field("Dominio", b.domain)}${field("Entrega", b.deadline)}</dl></section>
 <section class="card"><h2>Mensajes</h2>${messageList(order.messages, "yo")}
 <form method="post" action="/admin/pedidos/${order.id}/mensaje" class="form">
-  <label>${order.channel === "fiverr" ? "Registrar mensaje" : "Responder (el cliente lo verá en su portal)"}<textarea name="text" rows="5" required>${order.ai.draftReply}</textarea></label>
+  <label>${isMarketplace(order.channel) ? "Registrar mensaje" : "Responder (el cliente lo verá en su portal)"}<textarea name="text" rows="5" required>${order.ai.draftReply}</textarea></label>
   <div class="actions">
-    <button class="btn" name="from" value="yo">${order.channel === "fiverr" ? "Registrar mensaje enviado" : "Enviar al cliente"}</button>
+    <button class="btn" name="from" value="yo">${isMarketplace(order.channel) ? "Registrar mensaje enviado" : "Enviar al cliente"}</button>
     <button class="btn secondary" name="from" value="cliente">Registrar como mensaje del cliente</button></div></form>
 <form method="post" action="/admin/pedidos/${order.id}/ia/respuesta" class="form inline-ai"><input name="intent" placeholder="Objetivo (opcional): pedir fotos, avisar entrega, pedir reseña..."><button class="btn small ai" ${running ? raw("disabled") : ""}>🤖 Redactar respuesta con IA</button></form>
 </section>

@@ -5,6 +5,7 @@ import { ROOT, loadEnv, getStores, getStore, getStoreBySlug, getPackage, CHANNEL
 import * as db from "./db.js";
 import * as ai from "./ai.js";
 import { readVersion } from "./sites.js";
+import { paymentRequestText } from "./payments.js";
 import { notify } from "./notify.js";
 import * as v from "./views.js";
 
@@ -55,7 +56,7 @@ app.post("/s/:slug/pedido", rateLimit, async (req, res) => {
   if (!getPackage(store, f.packageId) || !f.clientName || !f.clientEmail || !f.businessName || !f.description) {
     return send(res, v.storePage(store, "Completa los campos obligatorios.", f), 400);
   }
-  const order = db.createOrder({ ...f, price: undefined, storeId: store.id, channel: "web" });
+  const order = db.createOrder({ ...f, price: undefined, feePercent: undefined, storeId: store.id, channel: "web" });
   notify(`🛒 Nuevo pedido ${order.id} en "${store.name}": ${order.client.name} — ${order.brief.businessName} (${order.price} ${store.packages.find((p) => p.id === order.packageId)?.name})\n${baseUrl(req)}/admin/pedidos/${order.id}`);
   res.redirect(303, `/o/${order.token}?ok=1`);
 });
@@ -137,7 +138,7 @@ admin.post("/pedidos", (req, res) => {
   const [storeId, packageId] = String(req.body.storePkg || "").split("|");
   try {
     if (!CHANNELS[req.body.channel]) throw new Error("Canal inválido");
-    const order = db.createOrder({ ...req.body, storeId, packageId, feePercent: req.body.channel === "fiverr" ? 20 : getStore(storeId)?.feePercent });
+    const order = db.createOrder({ ...req.body, storeId, packageId });
     res.redirect(303, `/admin/pedidos/${order.id}?ok=Pedido+creado`);
   } catch (e) {
     send(res, v.newOrderPage({ stores: getStores(), prefill: { ...req.body, storeId, packageId }, error: e.message }), 400);
@@ -171,6 +172,18 @@ admin.post("/pedidos/:id/mensaje", withOrder((req, res, order) => {
   db.addMessage(order.id, from, req.body.text);
   if (from === "yo") db.updateOrder(order.id, (o) => { o.ai.draftReply = ""; if (o.status === "nuevo") o.status = "contactado"; });
   res.redirect(303, `/admin/pedidos/${order.id}?ok=Mensaje+guardado`);
+}));
+
+admin.post("/pedidos/:id/pago", withOrder((req, res, order) => {
+  db.addPayment(order.id, req.body.amount, req.body.method, req.body.note);
+  res.redirect(303, `/admin/pedidos/${order.id}?ok=Pago+registrado`);
+}));
+
+// Prepara el mensaje de cobro (anticipo o saldo) con los enlaces de PayPal / otros medios configurados.
+admin.post("/pedidos/:id/cobro", withOrder((req, res, order) => {
+  const text = paymentRequestText(order);
+  db.updateOrder(order.id, (o) => { o.ai.draftReply = text; }, "Mensaje de cobro preparado");
+  res.redirect(303, `/admin/pedidos/${order.id}?ok=Mensaje+de+cobro+listo:+rev%C3%ADsalo+y+env%C3%ADalo`);
 }));
 
 admin.post("/pedidos/:id/notas", withOrder((req, res, order) => {

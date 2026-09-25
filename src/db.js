@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { DATA_DIR, STATUS_IDS, EARNED_STATUSES, getStore, getPackage } from "./config.js";
+import { DATA_DIR, STATUS_IDS, EARNED_STATUSES, CHANNEL_FEES, getStore, getPackage, getCatalog, isMarketplace } from "./config.js";
 
 const DB_FILE = path.join(DATA_DIR, "db.json");
 let db;
@@ -40,16 +40,22 @@ export function createOrder(input) {
   const price = input.price !== undefined && input.price !== "" ? Number(input.price) : pkg?.price ?? 0;
   if (!Number.isFinite(price) || price < 0) throw new Error("Precio inválido");
 
+  const channel = clean(input.channel || store.channel, 20);
+  // Comisión: la de la plataforma si es un marketplace; si no, la del medio de pago directo (PayPal, etc.).
+  const autoFee = isMarketplace(channel) ? CHANNEL_FEES[channel] ?? store.feePercent : getCatalog().payments.feePercent ?? store.feePercent;
+  const feePercent = input.feePercent !== undefined && input.feePercent !== "" ? Number(input.feePercent) : Number(autoFee ?? 0);
+  if (!Number.isFinite(feePercent) || feePercent < 0 || feePercent > 100) throw new Error("Comisión inválida");
+
   db.seq += 1;
   const order = {
     id: `WEB-${String(db.seq).padStart(4, "0")}`,
     token: crypto.randomBytes(18).toString("base64url"),
     storeId: store.id,
-    channel: clean(input.channel || store.channel, 20),
+    channel,
     externalRef: clean(input.externalRef, 100),
     packageId: pkg?.id ?? clean(input.packageId, 40),
     price,
-    feePercent: Number(input.feePercent ?? store.feePercent ?? 0),
+    feePercent,
     status: "nuevo",
     client: {
       name: clean(input.clientName, 120),
@@ -69,6 +75,7 @@ export function createOrder(input) {
       deadline: clean(input.deadline, 40),
     },
     messages: [],
+    payments: [],
     notes: clean(input.notes, 8000),
     ai: { summary: "", draftReply: "", job: null },
     site: { versions: [] },
@@ -136,6 +143,14 @@ export function markMessagesRead(id) {
   return updateOrder(id, (o) => o.messages.forEach((m) => { m.read = true; }));
 }
 
+export function addPayment(id, amount, method, note) {
+  const value = Math.round(Number(amount) * 100) / 100;
+  if (!Number.isFinite(value) || value <= 0) throw new Error("Monto inválido");
+  return updateOrder(id, (o) => {
+    (o.payments ??= []).push({ amount: value, method: clean(method, 60) || "otro", note: clean(note, 500), at: now() });
+  }, `Pago registrado: ${value} (${clean(method, 60) || "otro"})`);
+}
+
 export function getGig(storeId) {
   load();
   return db.gigs[storeId];
@@ -151,7 +166,7 @@ export function stats() {
   const orders = listOrders();
   const byStatus = Object.fromEntries(STATUS_IDS.map((s) => [s, 0]));
   const byStore = {};
-  let earnedGross = 0, earnedNet = 0, pipelineGross = 0, unread = 0;
+  let earnedGross = 0, earnedNet = 0, pipelineGross = 0, unread = 0, collected = 0, outstanding = 0;
   for (const o of orders) {
     byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
     const net = o.price * (1 - (o.feePercent || 0) / 100);
@@ -165,6 +180,12 @@ export function stats() {
       pipelineGross += o.price;
     }
     unread += o.messages.filter((m) => !m.read).length;
+    // Cobros directos registrados (los marketplaces pagan por su cuenta y no se registran aquí).
+    if (!isMarketplace(o.channel) && o.status !== "cancelado") {
+      const paid = (o.payments ?? []).reduce((sum, p) => sum + p.amount, 0);
+      collected += paid;
+      outstanding += Math.max(0, o.price - paid);
+    }
   }
-  return { total: orders.length, byStatus, byStore, earnedGross, earnedNet, pipelineGross, unread };
+  return { total: orders.length, byStatus, byStore, earnedGross, earnedNet, pipelineGross, unread, collected, outstanding };
 }

@@ -25,7 +25,8 @@ Sistema para vender el servicio de **creación de páginas web** desde varias ti
 | **IA**: aplicar cambios pedidos por el cliente, con historial de versiones | “Aplicar cambios” |
 | **IA**: importar un pedido de Fiverr pegando el texto | `/admin/pedidos/nuevo` |
 | **IA**: escribir el título, descripción, etiquetas y FAQ de cada gig/tienda | `/admin/tiendas` |
-| Ingresos: ganado neto (descontando comisión de cada canal) y por cobrar | panel principal |
+| **Cobro directo sin comisión de plataforma** (PayPal, Mercado Pago, Stripe, transferencia) para clientes de tus tiendas propias: anticipo + saldo, mensaje de cobro listo y registro de pagos | ficha del pedido y portal del cliente |
+| Ingresos: ganado neto (descontando comisión de cada canal), cobrado directo y saldo por cobrar | panel principal |
 | CLI para que **Claude Code administre el negocio** desde la terminal | `npm run cli` y `CLAUDE.md` |
 
 ## Puesta en marcha
@@ -60,7 +61,46 @@ Edita `config/stores.json`. Cada tienda tiene:
 - `feePercent`: comisión del canal (Fiverr 20 %, pasarela de pago ~5 %) para calcular tu ganancia neta
 - `packages`: paquetes con `price`, `deliveryDays`, `revisions`, `features` y `paymentLink` opcional (Mercado Pago, PayPal, Stripe…) que ve el cliente en su portal
 
+Además, el bloque `payments` (común a todas las tiendas propias) define cómo te pagan los clientes directos:
+
+```json
+"payments": {
+  "paypalMe": "tuusuario",                     // genera enlaces paypal.me con el monto exacto
+  "links": [{ "label": "Mercado Pago", "url": "https://link.mercadopago.com.ar/tuusuario" }],
+  "instructions": "Transferencia: alias TU.ALIAS / CBU ...",
+  "depositPercent": 50,                        // anticipo antes de empezar (0 = cobro total)
+  "feePercent": 5.4                            // comisión del medio de pago, para calcular tu neto
+}
+```
+
 Reinicia el servidor después de editarlo.
+
+## Cobrar sin comisión de plataforma
+
+Con los clientes que llegan **por tus tiendas propias o por contacto directo** (redes sociales, Google, recomendados) cobras directo por PayPal, Mercado Pago, etc. y te quedas con casi todo (solo la comisión del medio de pago, ~3-5 %, en vez del 20 % de Fiverr):
+
+1. En la ficha del pedido pulsa **“Preparar mensaje de cobro”**: arma el mensaje con el monto del anticipo (o del saldo) y tus enlaces de pago, listo para enviar por el portal, WhatsApp o email.
+2. El cliente también ve un botón **Pagar** en su portal con el monto exacto.
+3. Cuando recibes el dinero, **“Registrar pago recibido”**. El panel muestra lo cobrado y el saldo pendiente.
+
+**Los clientes que te contratan por Fiverr, Workana, Upwork u otro marketplace pagan siempre dentro de esa plataforma.** Pedirles que paguen por PayPal para saltarte la comisión viola sus reglas y es causa habitual de suspensión permanente de la cuenta (pierdes reseñas, nivel y dinero pendiente). Por eso el sistema nunca muestra enlaces de pago externos en esos pedidos, y la IA no los propone aunque el cliente lo pida. La estrategia sana es usar los marketplaces para conseguir reseñas y portafolio, y hacer crecer en paralelo tus tiendas propias, donde cobras sin comisión.
+
+## Marketplaces recomendados (además de Fiverr)
+
+Comisiones aproximadas para el vendedor en 2026 (cambian a menudo: verifícalas antes de registrarte). Puedes tener un perfil en cada una: son empresas distintas.
+
+| Plataforma | Comisión aprox. | Por qué te sirve |
+|---|---|---|
+| **Workana** | 5-20 % | La más grande de Latinoamérica; clientes en español |
+| **Upwork** | 0-15 % variable por contrato (≈10 % en promedio) | Clientes de EE. UU./Europa que pagan más; muchos proyectos web |
+| **Contra** | 0 % | Sin comisión; ideal como portafolio y para cobrar a clientes que tú consigues |
+| **Freelancer.com** | ~10 % | Muy usada en Argentina, Colombia, México |
+| **Malt** | ~10 % | Fuerte en España y Europa |
+| **PeoplePerHour** | hasta 20 %, baja con el volumen por cliente | Reino Unido y Europa; ofertas tipo “paquete” como Fiverr |
+| **99designs** | 10-15 % | Especializada en diseño (logos, marcas, diseño web) |
+| **Toptal** | 0 % al freelancer | Proyectos muy bien pagados, pero solo acepta ~3 % de postulantes |
+
+Los canales Workana, Upwork, Freelancer.com, PeoplePerHour, Malt y Contra ya existen en el panel (con su comisión automática en `src/config.js` → `CHANNEL_FEES`).
 
 ## Flujo de trabajo diario
 
@@ -86,8 +126,9 @@ Comandos de la CLI: `npm run cli -- ayuda`.
 
 ## Reglas importantes de Fiverr
 
+- **No se cobra por fuera.** Todo cliente que te conoció en Fiverr paga por Fiverr (ver “Cobrar sin comisión de plataforma”).
 - **Una sola cuenta de vendedor por persona.** Abrir varias cuentas de Fiverr puede hacer que te las cierren todas. Para tener “varias tiendas” en Fiverr crea **varios gigs** en tu cuenta (uno por nicho: restaurantes, profesionales, landing pages, e-commerce…; el número de gigs activos depende de tu nivel de vendedor) y usa las **tiendas propias** de este sistema y otras plataformas (Workana, Upwork…) como canales adicionales.
-- **La comunicación y los pagos de clientes de Fiverr deben quedarse en Fiverr.** No pidas email/WhatsApp ni cobres por fuera. Por eso, en pedidos de Fiverr el panel no ofrece WhatsApp/email: registras la conversación aquí, usas la IA para redactar y envías por el chat de Fiverr. La IA ya tiene esta regla incorporada.
+- **La comunicación de clientes de Fiverr debe quedarse en Fiverr.** No pidas email/WhatsApp. Por eso, en pedidos de Fiverr el panel no ofrece WhatsApp/email ni enlaces de pago: registras la conversación aquí, usas la IA para redactar y envías por el chat de Fiverr. La IA ya tiene esta regla incorporada.
 - Fiverr no ofrece una API pública para vendedores, por eso los pedidos de Fiverr se importan pegando el texto (la IA extrae los datos).
 
 ## Publicar el sistema en internet
@@ -107,6 +148,7 @@ src/server.js        Servidor web (tiendas públicas, portal del cliente y panel
 src/views.js         Páginas HTML
 src/db.js            Base de datos (data/db.json)
 src/ai.js            Integración con Claude
+src/payments.js      Cobros directos (PayPal, Mercado Pago...) y estado de pagos
 src/sites.js         Versiones de los sitios generados (sites/<ID>/)
 src/notify.js        Avisos por Telegram / webhook
 src/cli.js           Línea de comandos para administrar (y para Claude Code)

@@ -39,9 +39,21 @@ export const CHANNELS = {
   web: "Tienda propia",
   workana: "Workana",
   upwork: "Upwork",
+  freelancer: "Freelancer.com",
+  peopleperhour: "PeoplePerHour",
+  malt: "Malt",
+  contra: "Contra",
   directo: "Contacto directo",
   otro: "Otro",
 };
+
+// Comisión que cobra cada plataforma al vendedor (aprox. 2026; ajústalo si cambia o si tu nivel te da otra tarifa).
+export const CHANNEL_FEES = { fiverr: 20, workana: 15, upwork: 10, freelancer: 10, peopleperhour: 20, malt: 10, contra: 0 };
+
+// Plataformas cuyas reglas obligan a que la comunicación y el pago se queden dentro de ellas.
+// A estos pedidos NUNCA se les ofrece pagar por PayPal u otro medio externo (riesgo de suspensión de la cuenta).
+export const MARKETPLACE_CHANNELS = ["fiverr", "workana", "upwork", "freelancer", "peopleperhour", "malt", "contra"];
+export const isMarketplace = (channel) => MARKETPLACE_CHANNELS.includes(channel);
 
 let cache;
 export function getCatalog() {
@@ -53,7 +65,7 @@ export function getCatalog() {
       if (ids.has(s.id)) throw new Error(`Tienda duplicada en stores.json: ${s.id}`);
       ids.add(s.id);
     }
-    cache = { currency: raw.currency || "USD", stores: raw.stores };
+    cache = { currency: raw.currency || "USD", payments: raw.payments || {}, stores: raw.stores };
   }
   return cache;
 }

@@ -90,3 +90,30 @@ test("vista previa del sitio servida en sandbox", async () => {
   assert.match(res.headers.get("content-security-policy"), /sandbox/);
   assert.equal(getOrder("WEB-0001").site.versions.length, 1);
 });
+
+test("cobro directo por PayPal en tiendas propias, nunca en marketplaces", async () => {
+  const { getCatalog } = await import("../src/config.js");
+  Object.assign(getCatalog().payments, { paypalMe: "miusuario", depositPercent: 50, links: [], instructions: "" });
+  const { getOrder } = await import("../src/db.js");
+  const direct = getOrder("WEB-0001"); // tienda propia, 180 USD
+
+  const portal = await (await fetch(`${base}/o/${direct.token}`)).text();
+  assert.match(portal, /paypal\.com\/paypalme\/miusuario\/90USD/, "anticipo del 50% por PayPal");
+
+  const cobro = await post("/admin/pedidos/WEB-0001/cobro", {}, { ...auth, origin: base });
+  assert.equal(cobro.status, 303);
+  assert.match(getOrder("WEB-0001").ai.draftReply, /paypalme\/miusuario\/90USD/);
+
+  await post("/admin/pedidos/WEB-0001/pago", { amount: "90", method: "PayPal" }, { ...auth, origin: base });
+  assert.match(await (await fetch(`${base}/o/${direct.token}`)).text(), /paypalme\/miusuario\/90USD/, "saldo restante");
+  await post("/admin/pedidos/WEB-0001/pago", { amount: "90", method: "PayPal" }, { ...auth, origin: base });
+  assert.match(await (await fetch(`${base}/o/${direct.token}`)).text(), /Pago completo recibido/);
+
+  // Pedido de Fiverr: sin enlaces de pago externos en ningún lado
+  const fiverr = getOrder("WEB-0002");
+  assert.equal(fiverr.feePercent, 20);
+  assert.ok(!(await (await fetch(`${base}/o/${fiverr.token}`)).text()).includes("paypal"));
+  assert.ok(!(await (await fetch(`${base}/admin/pedidos/WEB-0002`, { headers: auth })).text()).includes("paypal"));
+  const denied = await post("/admin/pedidos/WEB-0002/cobro", {}, { ...auth, origin: base });
+  assert.match(decodeURIComponent(denied.headers.get("location")), /dentro de la plataforma/);
+});

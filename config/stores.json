@@ -1,5 +1,22 @@
 {
   "currency": "USD",
+  "payments": {
+    "_ayuda": "Medios de pago directos (sin comisión de plataforma) para clientes de tus tiendas propias y contacto directo. Nunca se muestran en pedidos de Fiverr/Workana/Upwork.",
+    "paypalMe": "",
+    "links": [
+      {
+        "label": "Mercado Pago",
+        "url": ""
+      },
+      {
+        "label": "Tarjeta (Stripe)",
+        "url": ""
+      }
+    ],
+    "instructions": "",
+    "depositPercent": 50,
+    "feePercent": 5.4
+  },
   "stores": [
     {
       "id": "fiverr-landing",
@@ -12,9 +29,45 @@
       "feePercent": 20,
       "accent": "#1dbf73",
       "packages": [
-        { "id": "basico", "name": "Básico", "price": 60, "deliveryDays": 4, "revisions": 1, "features": ["1 página (landing)", "Diseño responsive", "Formulario de contacto", "Botón de WhatsApp"] },
-        { "id": "estandar", "name": "Estándar", "price": 150, "deliveryDays": 6, "revisions": 3, "features": ["Hasta 4 secciones/páginas", "SEO básico", "Galería", "Integración de redes sociales"] },
-        { "id": "premium", "name": "Premium", "price": 300, "deliveryDays": 10, "revisions": 5, "features": ["Hasta 8 páginas", "Blog o catálogo", "Textos redactados", "Publicación en tu dominio"] }
+        {
+          "id": "basico",
+          "name": "Básico",
+          "price": 60,
+          "deliveryDays": 4,
+          "revisions": 1,
+          "features": [
+            "1 página (landing)",
+            "Diseño responsive",
+            "Formulario de contacto",
+            "Botón de WhatsApp"
+          ]
+        },
+        {
+          "id": "estandar",
+          "name": "Estándar",
+          "price": 150,
+          "deliveryDays": 6,
+          "revisions": 3,
+          "features": [
+            "Hasta 4 secciones/páginas",
+            "SEO básico",
+            "Galería",
+            "Integración de redes sociales"
+          ]
+        },
+        {
+          "id": "premium",
+          "name": "Premium",
+          "price": 300,
+          "deliveryDays": 10,
+          "revisions": 5,
+          "features": [
+            "Hasta 8 páginas",
+            "Blog o catálogo",
+            "Textos redactados",
+            "Publicación en tu dominio"
+          ]
+        }
       ]
     },
     {
@@ -28,9 +81,47 @@
       "feePercent": 5,
       "accent": "#e4572e",
       "packages": [
-        { "id": "basico", "name": "Carta Digital", "price": 80, "deliveryDays": 4, "revisions": 2, "features": ["Carta/menú digital con QR", "Horarios y ubicación", "Botón de WhatsApp"], "paymentLink": "" },
-        { "id": "estandar", "name": "Restaurante Completo", "price": 180, "deliveryDays": 7, "revisions": 3, "features": ["Todo lo del básico", "Galería de platos", "Formulario de reservas", "SEO local"], "paymentLink": "" },
-        { "id": "premium", "name": "Pedidos Online", "price": 350, "deliveryDays": 12, "revisions": 5, "features": ["Todo lo del estándar", "Carrito de pedidos a WhatsApp", "Varias sucursales", "Publicación en tu dominio"], "paymentLink": "" }
+        {
+          "id": "basico",
+          "name": "Carta Digital",
+          "price": 80,
+          "deliveryDays": 4,
+          "revisions": 2,
+          "features": [
+            "Carta/menú digital con QR",
+            "Horarios y ubicación",
+            "Botón de WhatsApp"
+          ],
+          "paymentLink": ""
+        },
+        {
+          "id": "estandar",
+          "name": "Restaurante Completo",
+          "price": 180,
+          "deliveryDays": 7,
+          "revisions": 3,
+          "features": [
+            "Todo lo del básico",
+            "Galería de platos",
+            "Formulario de reservas",
+            "SEO local"
+          ],
+          "paymentLink": ""
+        },
+        {
+          "id": "premium",
+          "name": "Pedidos Online",
+          "price": 350,
+          "deliveryDays": 12,
+          "revisions": 5,
+          "features": [
+            "Todo lo del estándar",
+            "Carrito de pedidos a WhatsApp",
+            "Varias sucursales",
+            "Publicación en tu dominio"
+          ],
+          "paymentLink": ""
+        }
       ]
     },
     {
@@ -44,9 +135,47 @@
       "feePercent": 5,
       "accent": "#3a6ea5",
       "packages": [
-        { "id": "basico", "name": "Tarjeta Web", "price": 70, "deliveryDays": 3, "revisions": 2, "features": ["1 página de presentación", "Servicios y contacto", "Botón de WhatsApp"], "paymentLink": "" },
-        { "id": "estandar", "name": "Profesional", "price": 160, "deliveryDays": 6, "revisions": 3, "features": ["Hasta 5 secciones", "Agenda de citas (enlace)", "Testimonios", "SEO básico"], "paymentLink": "" },
-        { "id": "premium", "name": "Marca Personal", "price": 320, "deliveryDays": 10, "revisions": 5, "features": ["Hasta 8 páginas", "Blog", "Textos redactados", "Publicación en tu dominio"], "paymentLink": "" }
+        {
+          "id": "basico",
+          "name": "Tarjeta Web",
+          "price": 70,
+          "deliveryDays": 3,
+          "revisions": 2,
+          "features": [
+            "1 página de presentación",
+            "Servicios y contacto",
+            "Botón de WhatsApp"
+          ],
+          "paymentLink": ""
+        },
+        {
+          "id": "estandar",
+          "name": "Profesional",
+          "price": 160,
+          "deliveryDays": 6,
+          "revisions": 3,
+          "features": [
+            "Hasta 5 secciones",
+            "Agenda de citas (enlace)",
+            "Testimonios",
+            "SEO básico"
+          ],
+          "paymentLink": ""
+        },
+        {
+          "id": "premium",
+          "name": "Marca Personal",
+          "price": 320,
+          "deliveryDays": 10,
+          "revisions": 5,
+          "features": [
+            "Hasta 8 páginas",
+            "Blog",
+            "Textos redactados",
+            "Publicación en tu dominio"
+          ],
+          "paymentLink": ""
+        }
       ]
     }
   ]

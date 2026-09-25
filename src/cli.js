@@ -2,7 +2,8 @@
 // CLI para administrar el negocio desde la terminal (pensada también para que Claude Code la use).
 // Uso: npm run cli -- <comando> [argumentos]    (o: node src/cli.js <comando> ...)
 import fs from "node:fs";
-import { loadEnv, getStores, getStore, getPackage, STATUSES, CHANNELS, statusLabel } from "./config.js";
+import { loadEnv, getStores, getStore, getPackage, STATUSES, CHANNELS, statusLabel, isMarketplace } from "./config.js";
+import { paymentStatus, paymentRequestText } from "./payments.js";
 import * as db from "./db.js";
 import * as ai from "./ai.js";
 import { saveVersion, sitePath } from "./sites.js";
@@ -20,6 +21,8 @@ const HELP = `Comandos:
   mensaje <ID> "texto"           Registra/envía un mensaje tuyo al cliente (lo ve en su portal)
   mensaje-cliente <ID> "texto"   Registra un mensaje recibido del cliente (p. ej. copiado de Fiverr)
   nota <ID> "texto"              Añade una nota interna
+  pago <ID> <monto> [medio] [nota]  Registra un pago directo recibido (PayPal, Mercado Pago, transferencia...)
+  cobro <ID>                     Prepara el mensaje de cobro (anticipo o saldo) con tus enlaces de pago
   leido <ID>                     Marca los mensajes del pedido como leídos
   registrar-sitio <ID> "nota"    Registra como nueva versión el archivo sites/<ID>/index.html editado a mano
   ia-resumen <ID>                IA: análisis del pedido
@@ -45,6 +48,7 @@ function show(o) {
     `Cliente: ${JSON.stringify(o.client)}`,
     `Brief:`, ...Object.entries(o.brief).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`),
     `Notas: ${o.notes || "-"}`,
+    isMarketplace(o.channel) ? `Cobro: dentro de ${CHANNELS[o.channel] ?? o.channel}` : `Cobro directo: pagado ${money(paymentStatus(o).paid)} de ${money(o.price)}${(o.payments ?? []).map((p) => `\n  ${p.at.slice(0, 10)} ${money(p.amount)} ${p.method} ${p.note}`).join("")}`,
     `Sitio: ${o.site.versions.length ? `${o.site.versions.length} versiones → ${sitePath(o.id)}` : "sin generar"}`,
     `Mensajes:`, ...o.messages.map((m) => `  [${m.at.slice(0, 16)}] ${m.from === "yo" ? "YO" : "CLIENTE"}${m.read ? "" : " (nuevo)"}: ${m.text}`),
   ];
@@ -63,6 +67,7 @@ const commands = {
       ["Con mensajes sin leer", active.filter((o) => o.messages.some((m) => !m.read))],
       ["Entrega en ≤ 2 días o vencida", active.filter((o) => o.brief.deadline && Date.parse(o.brief.deadline) <= soon)],
       ["En progreso sin sitio generado", active.filter((o) => o.status === "en_progreso" && !o.site.versions.length)],
+      ["Clientes directos con saldo por cobrar", active.filter((o) => !isMarketplace(o.channel) && o.status !== "nuevo" && paymentStatus(o).due > 0)],
     ];
     for (const [title, list] of groups) console.log(`\n## ${title} (${list.length})\n${list.map(line).join("\n") || "  —"}`);
   },
@@ -72,6 +77,7 @@ const commands = {
     const s = db.stats();
     console.log(`Pedidos: ${s.total} · sin leer: ${s.unread}`);
     console.log(`Ganado bruto ${money(s.earnedGross)} · neto ${money(s.earnedNet)} · por cobrar ${money(s.pipelineGross)}`);
+    console.log(`Cobros directos (sin comisión de plataforma): cobrado ${money(s.collected)} · saldo pendiente ${money(s.outstanding)}`);
     console.log("Por estado:", Object.entries(s.byStatus).map(([k, v]) => `${k}=${v}`).join(" "));
     for (const st of getStores()) console.log(`  ${st.name}: ${s.byStore[st.id]?.count ?? 0} pedidos, neto ${money(s.byStore[st.id]?.earnedNet)}`);
   },
@@ -85,6 +91,19 @@ const commands = {
   nota(id, text) {
     db.updateOrder(orderOrFail(id).id, (o) => { o.notes = `${o.notes ? `${o.notes}\n` : ""}[${new Date().toISOString().slice(0, 10)}] ${need(text, "Falta el texto")}`; });
     console.log("Nota añadida.");
+  },
+  pago(id, amount, method, ...note) {
+    const o = orderOrFail(id);
+    if (isMarketplace(o.channel)) throw new Error("Pedido de marketplace: el pago lo gestiona la plataforma.");
+    db.addPayment(o.id, amount, method, note.join(" "));
+    const st = paymentStatus(db.getOrder(o.id));
+    console.log(`Pago registrado. Cobrado ${money(st.paid)} · saldo ${money(st.due)}`);
+  },
+  cobro(id) {
+    const o = orderOrFail(id);
+    const text = paymentRequestText(o);
+    db.updateOrder(o.id, (x) => { x.ai.draftReply = text; }, "Mensaje de cobro preparado");
+    console.log(`${text}\n\n(Guardado como borrador en el pedido. Envíalo con: npm run cli -- mensaje ${o.id} "...")`);
   },
   leido(id) { db.markMessagesRead(orderOrFail(id).id); console.log("Marcados como leídos."); },
   "registrar-sitio"(id, note) {
