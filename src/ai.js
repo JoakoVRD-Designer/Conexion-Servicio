@@ -75,6 +75,7 @@ Código: ${order.id}
 Tienda: ${store?.name} (${CHANNELS[order.channel] ?? order.channel})
 Nicho de la tienda: ${store?.niche ?? ""}
 Paquete: ${pkg ? `${pkg.name} — ${pkg.price} USD, entrega ${pkg.deliveryDays} días, ${pkg.revisions} revisiones. Incluye: ${pkg.features.join("; ")}` : order.packageId}
+Extras contratados: ${(order.extras || []).map((e) => `${e.name}${e.recurring ? ` (${e.price} USD por ${e.recurring}, se cobra aparte)` : ` (+${e.price} USD)`}`).join("; ") || "ninguno"}
 Precio acordado: ${order.price}
 Estado: ${statusLabel(order.status)}
 Cliente: ${order.client.name || order.client.username || "(sin nombre)"} ${order.client.country ? `(${order.client.country})` : ""}

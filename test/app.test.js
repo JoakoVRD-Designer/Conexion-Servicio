@@ -37,7 +37,7 @@ test("las tiendas públicas se muestran", async () => {
 test("flujo completo: pedido del cliente, mensajes y gestión en el panel", async () => {
   const res = await post("/s/restaurantes/pedido", {
     packageId: "estandar", clientName: "Ana", clientEmail: "ana@example.com", clientPhone: "+54 9 11 5555 0000",
-    businessName: "<script>alert(1)</script>Bistró Ana", description: "Quiero una web con reservas",
+    businessName: "<script>alert(1)</script>Bistró Ana", description: "Quiero una web con reservas", acepto: "1",
   });
   assert.equal(res.status, 303);
   const portalUrl = res.headers.get("location").replace(/\?.*/, "");
@@ -126,7 +126,7 @@ test("Discord se ofrece solo a clientes directos, nunca en marketplaces", async 
   getCatalog().contact.discordInvite = "https://discord.gg/abc123";
   const res = await post("/s/profesionales/pedido", {
     packageId: "basico", clientName: "Leo", clientEmail: "leo@example.com", clientDiscord: "leo#77",
-    businessName: "Estudio Leo", description: "Web de presentación",
+    businessName: "Estudio Leo", description: "Web de presentación", acepto: "1",
   });
   const portalUrl = res.headers.get("location").replace(/\?.*/, "");
   assert.match(await (await fetch(base + portalUrl)).text(), /discord\.gg\/abc123/);
@@ -142,11 +142,53 @@ test("Discord se ofrece solo a clientes directos, nunca en marketplaces", async 
 test("portafolio: DORN AGRO aparece como proyecto destacado en la portada y en las tiendas", async () => {
   for (const url of ["/", "/s/restaurantes", "/s/landing-pro"]) {
     const page = await (await fetch(base + url)).text();
-    assert.match(page, /Proyecto destacado/, url);
+    assert.match(page, /Proyecto real/, url);
     assert.match(page, /DORN AGRO/, url);
     assert.match(page, /\/portafolio\/dorn-agro-portada\.jpg/, url);
   }
   const img = await fetch(`${base}/portafolio/dorn-agro-panel.jpg`);
   assert.equal(img.status, 200);
   assert.equal(img.headers.get("content-type"), "image/jpeg");
+});
+
+test("tienda: exige aceptar términos, suma extras al precio y acorta el plazo con entrega express", async () => {
+  const base_ = { packageId: "estandar", clientName: "Eva", clientEmail: "eva@example.com", businessName: "Café Eva", description: "Web para mi café" };
+  const sin = await post("/s/restaurantes/pedido", base_);
+  assert.equal(sin.status, 400);
+  assert.match(await sin.text(), /aceptar los términos/);
+
+  const body = new URLSearchParams({ ...base_, acepto: "1" });
+  for (const e of ["express", "textos", "mantenimiento", "inventado"]) body.append("extras", e);
+  const res = await fetch(`${base}/s/restaurantes/pedido`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" }, body });
+  assert.equal(res.status, 303);
+  const { listOrders } = await import("../src/db.js");
+  const o = listOrders({ q: "Café Eva" })[0];
+  assert.equal(o.price, 180 + 40 + 35, "plan + express + textos (el mantenimiento mensual se cobra aparte)");
+  assert.deepEqual(o.extras.map((e) => e.id), ["express", "textos", "mantenimiento"], "extras inventados se ignoran");
+  const days = Math.round((Date.parse(o.brief.deadline) - Date.parse(o.createdAt.slice(0, 10))) / 86400000);
+  assert.ok(days <= 4, `express: 7 días → ${days}`);
+  assert.ok(o.acceptedTermsAt);
+});
+
+test("tienda: el plan Premium no ofrece extras que ya incluye", async () => {
+  const body = new URLSearchParams({ packageId: "premium", clientName: "Leo", clientEmail: "l@example.com", businessName: "Resto Premium", description: "x", acepto: "1" });
+  body.append("extras", "textos");
+  await fetch(`${base}/s/restaurantes/pedido`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" }, body });
+  const { listOrders } = await import("../src/db.js");
+  const o = listOrders({ q: "Resto Premium" })[0];
+  assert.equal(o.price, 350);
+  assert.equal(o.extras.length, 0);
+});
+
+test("sitio propio: no manda visitantes a Fiverr; legales, robots y sitemap", async () => {
+  const home = await (await fetch(base + "/")).text();
+  assert.ok(!home.includes('href="/s/landing-pro"'), "la tienda de Fiverr no se lista en el sitio propio");
+  assert.match(home, /\/terminos/);
+  for (const url of ["/terminos", "/privacidad"]) assert.equal((await fetch(base + url)).status, 200);
+  const robots = await (await fetch(base + "/robots.txt")).text();
+  assert.match(robots, /Disallow: \/admin/);
+  assert.match(robots, /Disallow: \/o\//);
+  const sitemap = await (await fetch(base + "/sitemap.xml")).text();
+  assert.match(sitemap, /\/s\/restaurantes/);
+  assert.ok(!sitemap.includes("landing-pro"));
 });

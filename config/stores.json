@@ -1,9 +1,19 @@
 {
   "currency": "USD",
+  "_brand_ayuda": "Tu marca: aparece en la cabecera, el pie, los títulos de Google y los emails.",
+  "brand": {
+    "name": "Conexión Servicio",
+    "tagline": "Páginas web que venden, listas en días",
+    "description": "Diseñamos y programamos páginas web a medida para negocios: rápidas, perfectas en el celular y pensadas para que tus clientes te escriban. Ves el avance en tu portal, pides cambios y pagas la mitad al empezar.",
+    "email": "",
+    "accent": "#1d9a5b",
+    "responseTime": "24 horas"
+  },
   "contact": {
-    "_ayuda": "Canales de contacto para clientes de tiendas propias y contacto directo. Nunca se muestran en pedidos de marketplaces (Fiverr, Workana, Upwork...).",
+    "_ayuda": "Canales de contacto para clientes de tiendas propias y contacto directo. Nunca se muestran en pedidos de marketplaces (Fiverr, Workana, Upwork...). whatsapp: número con código de país, solo dígitos (ej. 56912345678).",
     "discordInvite": "",
-    "discordUser": ""
+    "discordUser": "",
+    "whatsapp": ""
   },
   "payments": {
     "_ayuda": "Medios de pago directos (sin comisión de plataforma) para clientes de tus tiendas propias y contacto directo. Nunca se muestran en pedidos de Fiverr/Workana/Upwork.",
@@ -22,6 +32,77 @@
     "depositPercent": 50,
     "feePercent": 5.4
   },
+  "_extras_ayuda": "Extras que el cliente puede sumar a su plan (suben el valor de cada pedido). price en la moneda de la tienda. deliveryFactor 0.5 = entrega en la mitad de días. extraRevisions suma revisiones. recurring = se cobra aparte cada mes (no suma al total). notFor = planes donde no se ofrece (porque ya lo incluyen).",
+  "extras": [
+    {
+      "id": "express",
+      "name": "Entrega express",
+      "description": "Tu web en la mitad del tiempo.",
+      "price": 40,
+      "deliveryFactor": 0.5
+    },
+    {
+      "id": "textos",
+      "name": "Textos que venden",
+      "description": "Redactamos todos los textos de tu web pensando en tus clientes.",
+      "price": 35,
+      "notFor": [
+        "premium"
+      ]
+    },
+    {
+      "id": "revisiones",
+      "name": "2 revisiones adicionales",
+      "description": "Más margen para ajustar cada detalle.",
+      "price": 20,
+      "extraRevisions": 2
+    },
+    {
+      "id": "dominio",
+      "name": "Publicación con tu dominio",
+      "description": "Conectamos tu dominio con HTTPS (el dominio se paga aparte, ~USD 12 al año).",
+      "price": 30,
+      "notFor": [
+        "premium"
+      ]
+    },
+    {
+      "id": "mantenimiento",
+      "name": "Mantenimiento mensual",
+      "description": "Cambios pequeños cada mes, respaldo y revisión de que todo funcione.",
+      "price": 15,
+      "recurring": "mes"
+    }
+  ],
+  "_faq_ayuda": "Preguntas frecuentes que aparecen en la portada y en cada tienda.",
+  "faq": [
+    {
+      "q": "¿Cuánto tarda mi página?",
+      "a": "Entre 3 y 12 días según el plan, contando desde que recibimos tu información (logo, fotos y datos del negocio). Con la entrega express, la mitad."
+    },
+    {
+      "q": "¿Cómo pago?",
+      "a": "Pagas el 50% para empezar y el 50% restante cuando apruebas el diseño, antes de recibir los archivos finales. Aceptamos PayPal, Mercado Pago y transferencia."
+    },
+    {
+      "q": "¿Qué necesito enviarles?",
+      "a": "Tu logo, fotos de tu negocio y los datos básicos (servicios, horarios, contacto). Lo subes todo desde tu portal privado. Si no tienes textos, podemos escribirlos por ti."
+    },
+    {
+      "q": "¿Puedo pedir cambios?",
+      "a": "Sí. Ves una vista previa de tu web y pides cambios desde tu portal. Cada plan incluye revisiones y puedes sumar más si las necesitas."
+    },
+    {
+      "q": "¿La página es mía?",
+      "a": "Sí. Al terminar te entregamos todos los archivos y puedes publicarla donde quieras. También podemos publicarla por ti con HTTPS y tu dominio."
+    },
+    {
+      "q": "¿Necesito pagar hosting?",
+      "a": "No necesariamente: podemos publicarla gratis con HTTPS. Si quieres tu propio dominio (minegocio.com), cuesta unos USD 12 al año y te ayudamos a conectarlo."
+    }
+  ],
+  "_testimonials_ayuda": "Solo testimonios REALES y con permiso del cliente: {\"name\": \"Nombre\", \"business\": \"Negocio\", \"text\": \"...\"}. Si la lista está vacía, la sección no se muestra.",
+  "testimonials": [],
   "_portfolio_ayuda": "Tus proyectos para mostrar en las tiendas. El destacado (featured) aparece en la portada y en cada tienda. Las imágenes van en public/portafolio/.",
   "portfolio": [
     {
@@ -90,7 +171,8 @@
             "SEO básico",
             "Galería",
             "Integración de redes sociales"
-          ]
+          ],
+          "popular": true
         },
         {
           "id": "premium",
@@ -143,7 +225,8 @@
             "Formulario de reservas",
             "SEO local"
           ],
-          "paymentLink": ""
+          "paymentLink": "",
+          "popular": true
         },
         {
           "id": "premium",
@@ -197,7 +280,8 @@
             "Testimonios",
             "SEO básico"
           ],
-          "paymentLink": ""
+          "paymentLink": "",
+          "popular": true
         },
         {
           "id": "premium",

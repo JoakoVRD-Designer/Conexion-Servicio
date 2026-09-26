@@ -59,6 +59,7 @@ function show(o) {
   const store = getStore(o.storeId), pkg = getPackage(store, o.packageId);
   const out = [
     `${o.id} · ${statusLabel(o.status)} · ${store?.name} · ${pkg?.name ?? o.packageId} · ${money(o.price)} (comisión ${o.feePercent}%)`,
+    ...(o.extras?.length ? [`Extras: ${o.extras.map((e) => `${e.name} ${e.recurring ? `${money(e.price)}/${e.recurring}` : `+${money(e.price)}`}`).join(", ")}`] : []),
     `Canal: ${CHANNELS[o.channel] ?? o.channel}${o.externalRef ? ` #${o.externalRef}` : ""} · creado ${o.createdAt} · portal: /o/${o.token}`,
     `Cliente: ${JSON.stringify(o.client)}`,
     `Brief:`, ...Object.entries(o.brief).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`),

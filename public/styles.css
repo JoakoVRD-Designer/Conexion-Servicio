@@ -145,3 +145,4 @@ input[type="file"] { padding: 7px; }
 .showcase-media .shot { width: 100%; height: auto; border-radius: 12px; display: block; box-shadow: 0 18px 50px #000a; border: 1px solid #ffffff1a; }
 .showcase-media .shot-0 { grid-column: 1 / -1; }
 .showcase-media .shot-1, .showcase-media .shot-2 { aspect-ratio: 16 / 10; object-fit: cover; }
+.extras-line { margin: 4px 0 0; font-size: .92rem; }

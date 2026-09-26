@@ -1,5 +1,5 @@
 // Plantillas HTML. Todo valor interpolado se escapa salvo que se marque con raw().
-import { STATUSES, CHANNELS, statusLabel, getStore, getPackage, getCatalog, getFeaturedProject, isMarketplace } from "./config.js";
+import { STATUSES, CHANNELS, statusLabel, getStore, getPackage, getCatalog, getBrand, isMarketplace } from "./config.js";
 import { paymentStatus, paymentOptions, paymentInstructions } from "./payments.js";
 import { revisionInfo, downloadAllowed } from "./flows.js";
 import { LABELS, MAX_FILES_PER_ORDER } from "./sites.js";
@@ -16,6 +16,7 @@ const money = (n) => `${getCatalog().currency} ${Number(n || 0).toLocaleString("
 const date = (iso) => (iso ? new Date(iso).toLocaleString("es", { dateStyle: "medium", timeStyle: "short" }) : "");
 const badge = (status) => html`<span class="badge st-${status}">${statusLabel(status)}</span>`;
 const digits = (s) => String(s || "").replace(/\D/g, "");
+const extrasText = (order) => (order.extras || []).map((e) => `${e.name} (${e.recurring ? `${money(e.price)} / ${e.recurring}` : `+${money(e.price)}`})`).join(" · ");
 
 export function layout({ title, body, admin = false, accent, refresh }) {
   return html`<!doctype html>
@@ -26,77 +27,13 @@ ${refresh ? raw(`<meta http-equiv="refresh" content="${Number(refresh)}">`) : ""
 <link rel="stylesheet" href="/styles.css">
 ${accent ? raw(`<style>:root{--accent:${/^#[0-9a-f]{3,8}$/i.test(accent) ? accent : "#4f46e5"}}</style>`) : ""}
 </head><body class="${admin ? "admin" : "public"}">
-${admin ? html`<nav class="topnav"><a href="/admin" class="brand">⚡ Conexión Servicio</a>
+${admin ? html`<nav class="topnav"><a href="/admin" class="brand">⚡ ${getBrand().name}</a>
   <a href="/admin">Pedidos</a><a href="/admin/pedidos/nuevo">+ Nuevo pedido</a><a href="/admin/tiendas">Tiendas</a><a href="/" target="_blank">Ver tiendas públicas ↗</a></nav>` : ""}
 <main class="container">${body}</main>
 </body></html>`;
 }
 
 // ---------------------------------------------------------------- Público
-
-// Proyecto destacado del portafolio (config/stores.json → portfolio).
-function featuredProject() {
-  const p = getFeaturedProject();
-  if (!p) return "";
-  const safeUrl = /^https:\/\//i.test(p.url || "") ? p.url : "";
-  return html`<section class="showcase" aria-labelledby="showcase-title">
-  <div class="showcase-text">
-    <p class="showcase-tag">Proyecto destacado · ${p.category}</p>
-    <h2 id="showcase-title">${p.title}</h2>
-    <p>${p.summary}</p>
-    <ul>${(p.highlights || []).map((h) => html`<li>${h}</li>`)}</ul>
-    ${safeUrl ? html`<a class="btn" href="${safeUrl}" target="_blank" rel="noopener">Ver el sitio en vivo ↗</a>` : ""}
-  </div>
-  <div class="showcase-media">${(p.images || []).slice(0, 3).map((img, i) => html`<img class="shot shot-${i}" src="${img.src}" alt="${img.alt || p.title}" loading="${i ? "lazy" : "eager"}" width="1440" height="900">`)}</div>
-</section>`;
-}
-
-export function homePage(stores) {
-  return layout({
-    title: "Diseño de páginas web",
-    body: html`<header class="hero"><h1>Páginas web profesionales para tu negocio</h1><p>Elige la especialidad que mejor encaje contigo.</p></header>
-${featuredProject()}
-<h2 class="section-title">Elige tu especialidad</h2>
-<div class="grid">${stores.map((s) => html`<a class="card store-card" href="/s/${s.slug}" style="--accent:${s.accent}">
-  <h2>${s.name}</h2><p>${s.tagline}</p><span class="muted">Desde ${money(Math.min(...s.packages.map((p) => p.price)))}</span></a>`)}</div>`,
-  });
-}
-
-export function storePage(store, error, form = {}) {
-  const isFiverr = store.channel === "fiverr";
-  return layout({
-    title: store.name,
-    accent: store.accent,
-    body: html`<header class="hero"><h1>${store.name}</h1><p>${store.tagline}</p></header>
-<section class="grid packages">${store.packages.map((p) => html`<div class="card pkg">
-  <h3>${p.name}</h3><div class="price">${money(p.price)}</div>
-  <p class="muted">Entrega en ${p.deliveryDays} días · ${p.revisions} revisiones</p>
-  <ul>${p.features.map((f) => html`<li>${f}</li>`)}</ul></div>`)}</section>
-${featuredProject()}
-${isFiverr
-  ? html`<section class="card center"><p>Este servicio se contrata por Fiverr, con pago protegido.</p>
-      ${store.externalUrl ? html`<a class="btn" href="${store.externalUrl}" target="_blank" rel="noopener">Ver el servicio en Fiverr</a>` : ""}</section>`
-  : html`<section class="card" id="pedido"><h2>Haz tu pedido</h2>
-  ${error ? html`<p class="alert error">${error}</p>` : ""}
-  <form method="post" action="/s/${store.slug}/pedido" class="form">
-    <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-    <label>Paquete<select name="packageId" required>${store.packages.map((p) => html`<option value="${p.id}" ${form.packageId === p.id ? raw("selected") : ""}>${p.name} — ${money(p.price)}</option>`)}</select></label>
-    <div class="row"><label>Tu nombre<input name="clientName" required maxlength="120" value="${form.clientName || ""}"></label>
-      <label>Email<input type="email" name="clientEmail" required maxlength="200" value="${form.clientEmail || ""}"></label></div>
-    <div class="row"><label>WhatsApp / teléfono<input name="clientPhone" maxlength="40" value="${form.clientPhone || ""}" placeholder="+54 9 11 1234 5678"></label>
-      <label>Usuario de Discord (opcional)<input name="clientDiscord" maxlength="60" value="${form.clientDiscord || ""}"></label>
-      <label>País<input name="clientCountry" maxlength="60" value="${form.clientCountry || ""}"></label></div>
-    <div class="row"><label>Nombre del negocio<input name="businessName" required maxlength="200" value="${form.businessName || ""}"></label>
-      <label>Rubro<input name="businessType" maxlength="200" value="${form.businessType || ""}" placeholder="${store.niche}"></label></div>
-    <label>Cuéntanos qué necesitas<textarea name="description" required rows="5" maxlength="8000">${form.description || ""}</textarea></label>
-    <label>Secciones que quieres<input name="sections" maxlength="2000" value="${form.sections || ""}" placeholder="Inicio, Servicios, Galería, Contacto..."></label>
-    <div class="row"><label>Colores / estilo<input name="colors" maxlength="300" value="${form.colors || ""}"></label>
-      <label>¿Tienes dominio?<input name="domain" maxlength="200" value="${form.domain || ""}" placeholder="minegocio.com"></label></div>
-    <label>Webs que te gustan (referencias)<textarea name="references" rows="2" maxlength="2000">${form.references || ""}</textarea></label>
-    <button class="btn">Enviar pedido</button>
-  </form></section>`}`,
-  });
-}
 
 export function clientPortal(order, flash, error) {
   const store = getStore(order.storeId);
@@ -106,7 +43,7 @@ export function clientPortal(order, flash, error) {
   return layout({
     title: `Pedido ${order.id}`,
     accent: store?.accent,
-    body: html`<header class="hero small"><h1>Tu pedido ${order.id}</h1><p>${store?.name} · ${pkg?.name ?? order.packageId}</p></header>
+    body: html`<header class="hero small"><h1>Tu pedido ${order.id}</h1><p>${store?.name} · ${pkg?.name ?? order.packageId}${isMarketplace(order.channel) ? "" : ` · ${money(order.price)}`}</p>${order.extras?.length ? html`<p class="muted small">Extras: ${extrasText(order)}</p>` : ""}</header>
 ${flash ? html`<p class="alert ok">${flash}</p>` : ""}${error ? html`<p class="alert error">${error}</p>` : ""}
 <section class="card"><p class="muted">Guarda este enlace: aquí verás el avance, podrás enviarnos tus archivos y escribirnos.</p>
 ${order.status === "cancelado" ? html`<p>${badge("cancelado")}</p>` : html`<ol class="steps">${steps.map((s, i) => html`<li class="${i <= idx ? "done" : ""}">${s.label}</li>`)}</ol>`}
@@ -355,7 +292,8 @@ export function orderDetail(order, { baseUrl, flash, error, netlifyOn }) {
     admin: true,
     refresh: running ? 8 : undefined,
     body: html`<header class="order-head"><div><h1>${order.id} ${badge(order.status)}</h1>
-  <p class="muted">${store?.name} · ${pkg?.name ?? order.packageId} · ${money(order.price)} (neto ${money(order.price * (1 - order.feePercent / 100))}) · ${CHANNELS[order.channel] ?? order.channel}${order.externalRef ? ` #${order.externalRef}` : ""} · creado ${date(order.createdAt)}</p></div>
+  <p class="muted">${store?.name} · ${pkg?.name ?? order.packageId} · ${money(order.price)} (neto ${money(order.price * (1 - order.feePercent / 100))}) · ${CHANNELS[order.channel] ?? order.channel}${order.externalRef ? ` #${order.externalRef}` : ""} · creado ${date(order.createdAt)}</p>
+  ${order.extras?.length ? html`<p class="extras-line">➕ Extras: <b>${extrasText(order)}</b>${order.extras.some((e) => e.recurring) ? html` <span class="new">¡ofrécele el plan mensual!</span>` : ""}</p>` : ""}</div>
   <form method="post" action="/admin/pedidos/${order.id}/estado" class="inline"><select name="status">${STATUSES.map((s) => html`<option value="${s.id}" ${s.id === order.status ? raw("selected") : ""}>${s.label}</option>`)}</select><button class="btn small">Cambiar estado</button></form></header>
 ${flash ? html`<p class="alert ok">${flash}</p>` : ""}${error ? html`<p class="alert error">${error}</p>` : ""}
 ${job ? html`<p class="alert ${job.status === "error" ? "error" : job.status === "running" ? "info" : "ok"}">🤖 IA · ${job.type}: ${job.status === "running" ? "trabajando… (la página se actualiza sola)" : job.status === "ok" ? "listo" : job.error}</p>` : ""}

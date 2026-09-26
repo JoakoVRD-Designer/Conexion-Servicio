@@ -10,12 +10,15 @@ Sistema para vender el servicio de **creación de páginas web** desde varias ti
                            Portal del cliente (/o/...)   sites/WEB-0001/index.html  → entregas
 ```
 
+> **¿Quieres vender ya?** Empieza por el [kit de ventas](docs/ventas/README.md): plan de 7 días, gigs de Fiverr listos para pegar, mensajes para conseguir clientes directos y textos para Workana/Upwork.
+
 ## Qué hace
 
 | Función | Dónde |
 |---|---|
 | Varias tiendas, cada una con su nicho, colores, paquetes y precios | `config/stores.json` → páginas públicas en `/s/<slug>` |
-| Formulario de pedido en tus tiendas propias (con enlace de pago por paquete) | `/s/<slug>` |
+| **Página de venta profesional**: portada con tu marca, confianza, proceso, portafolio, planes con "Más elegido", preguntas frecuentes, WhatsApp flotante, términos y privacidad, SEO (Open Graph, sitemap, robots) | `/` y `/s/<slug>` |
+| Formulario de pedido con **extras** (express, textos, revisiones, dominio, mantenimiento mensual) y resumen con total, anticipo y plazo en vivo | `/s/<slug>#pedido` |
 | Ver **quién pidió qué**: cliente, contacto, brief, paquete, precio, canal | `/admin` y `/admin/pedidos/<ID>` |
 | Comunicarte con el cliente: portal con chat, botones de WhatsApp/email con el mensaje ya escrito, enlace al chat de Fiverr | ficha del pedido |
 | **El cliente sube su logo y fotos** desde su portal (se validan y se usan en el sitio) | portal del cliente |
@@ -102,6 +105,19 @@ Para ofrecer **Discord** como canal de comunicación a tus clientes directos, co
 ```
 
 El portal del cliente muestra el botón “Unirme a Discord” y la IA puede ofrecerlo en sus mensajes, **solo en pedidos de tiendas propias o contacto directo** (nunca en Fiverr u otros marketplaces, cuyos sistemas detectan y sancionan estos intentos). El formulario de pedido también pide el usuario de Discord del cliente (opcional).
+
+### Marca, contacto, extras y preguntas frecuentes
+
+En el mismo archivo:
+
+- `brand`: nombre, frase principal (`tagline`), descripción, email, color (`accent`) y tiempo de respuesta que prometes (`responseTime`). Sale en la portada, los títulos de Google, el pie y la firma de los emails.
+- `contact.whatsapp`: tu número con código de país, solo dígitos (ej. `56912345678`). Activa el botón flotante y los botones "Hablar por WhatsApp". **Es el canal que más vende: complétalo.**
+- `extras`: lo que el cliente puede sumar a su plan. `deliveryFactor: 0.5` acorta el plazo a la mitad, `extraRevisions` suma revisiones, `recurring: "mes"` es un cobro mensual aparte y `notFor` oculta el extra en los planes que ya lo incluyen. Los precios de ejemplo son sugerencias: ajústalos.
+- `faq`: preguntas frecuentes de la portada y las tiendas.
+- `testimonials`: **solo testimonios reales y con permiso**. Mientras la lista esté vacía, la sección no aparece.
+- Un plan con `"popular": true` se muestra como "Más elegido".
+
+Las tiendas con `channel: "fiverr"` no se listan en tu sitio: a tus visitantes les conviene contratarte directo (sin el 20% de Fiverr). Los **términos del servicio** y la **política de privacidad** (`/terminos`, `/privacidad`) se generan con tu marca y tu anticipo; léelos y adáptalos a tu país antes de publicar.
 
 Reinicia el servidor después de editarlo.
 
@@ -193,7 +209,8 @@ En todos los casos:
 ```
 config/stores.json   Tiendas, paquetes y precios
 src/server.js        Servidor web (tiendas públicas, portal del cliente y panel)
-src/views.js         Páginas HTML
+src/storefront.js    Páginas públicas de venta (portada, tiendas, legales, SEO)
+src/views.js         Portal del cliente y panel
 src/db.js            Base de datos (data/db.json)
 src/ai.js            Integración con Claude
 src/payments.js      Cobros directos (PayPal, Mercado Pago...) y estado de pagos
@@ -206,5 +223,7 @@ src/zip.js           Generador de ZIP para las entregas
 src/notify.js        Avisos por Telegram / webhook
 src/cli.js           Línea de comandos para administrar (y para Claude Code)
 scripts/simulacion.js  Simulación completa del negocio (npm run simulacion)
+scripts/capturas-portafolio.mjs  Regenera las imágenes del portafolio (npm run portafolio)
+docs/ventas/         Kit de ventas: gigs de Fiverr, prospección, perfiles y plan de 7 días
 test/                Pruebas (npm test; incluye la simulación)
 ```

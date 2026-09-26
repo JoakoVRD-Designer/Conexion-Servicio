@@ -66,7 +66,17 @@ export function getCatalog() {
       if (ids.has(s.id)) throw new Error(`Tienda duplicada en stores.json: ${s.id}`);
       ids.add(s.id);
     }
-    cache = { currency: raw.currency || "USD", contact: raw.contact || {}, payments: raw.payments || {}, portfolio: raw.portfolio || [], stores: raw.stores };
+    cache = {
+      currency: raw.currency || "USD",
+      brand: { name: "Conexión Servicio", tagline: "", description: "", email: "", accent: "#1d9a5b", responseTime: "24 horas", ...raw.brand },
+      contact: raw.contact || {},
+      payments: raw.payments || {},
+      extras: raw.extras || [],
+      faq: raw.faq || [],
+      testimonials: raw.testimonials || [],
+      portfolio: raw.portfolio || [],
+      stores: raw.stores,
+    };
   }
   return cache;
 }
@@ -75,3 +85,25 @@ export const getStore = (id) => getStores().find((s) => s.id === id);
 export const getStoreBySlug = (slug) => getStores().find((s) => s.slug === slug);
 export const getFeaturedProject = () => getCatalog().portfolio.find((p) => p.featured) ?? getCatalog().portfolio[0];
 export const getPackage = (store, pkgId) => store?.packages.find((p) => p.id === pkgId);
+export const getBrand = () => getCatalog().brand;
+
+// Extras que se pueden sumar a un plan (los que el plan ya incluye no se ofrecen).
+export const extrasFor = (pkg) => getCatalog().extras.filter((e) => !(e.notFor || []).includes(pkg?.id));
+
+// Precio y plazo de un plan con extras. Los extras recurrentes (mensuales) no suman al total: se cobran aparte.
+export function quote(store, pkgId, extraIds = []) {
+  const pkg = getPackage(store, pkgId);
+  if (!pkg) return null;
+  const wanted = new Set([].concat(extraIds || []).map(String));
+  const extras = extrasFor(pkg).filter((e) => wanted.has(e.id)).map((e) => ({
+    id: e.id, name: e.name, price: Number(e.price) || 0, recurring: e.recurring || "", extraRevisions: e.extraRevisions || 0, deliveryFactor: e.deliveryFactor || 1,
+  }));
+  const factor = extras.reduce((f, e) => f * e.deliveryFactor, 1);
+  return {
+    pkg,
+    extras,
+    total: pkg.price + extras.filter((e) => !e.recurring).reduce((sum, e) => sum + e.price, 0),
+    deliveryDays: Math.max(1, Math.ceil(pkg.deliveryDays * factor)),
+    revisions: pkg.revisions + extras.reduce((sum, e) => sum + e.extraRevisions, 0),
+  };
+}

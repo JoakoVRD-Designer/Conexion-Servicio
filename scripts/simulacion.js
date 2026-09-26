@@ -244,6 +244,7 @@ const waitFor = async (cond, what) => {
 const { getCatalog } = await import("../src/config.js");
 Object.assign(getCatalog().payments, { paypalMe: "estudioweb", depositPercent: 50, links: [{ label: "Mercado Pago", url: "https://link.mercadopago.com.ar/estudioweb" }], instructions: "Transferencia: alias ESTUDIO.WEB.MP" });
 getCatalog().contact.discordInvite = "https://discord.gg/estudioweb";
+getCatalog().contact.whatsapp = "56912345678";
 
 console.log(`\nSimulación · IA: ${realAI ? "Claude REAL" : "API de Claude simulada"} · Netlify: ${realNetlify ? "REAL" : "simulado"} · servidor ${BASE}\n`);
 const t0 = Date.now();
@@ -256,6 +257,8 @@ const LOGO = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2
 await step("1. El cliente entra a la tienda de restaurantes", async () => {
   const home = await text(get("/"));
   check(home.includes("Webs para Restaurantes"), "la portada lista las tiendas");
+  check(!home.includes('href="/s/landing-pro"'), "el sitio propio no manda visitantes a Fiverr (evita pagar 20% de comisión)");
+  check(home.includes("wa.me/56912345678") && home.includes("Preguntas frecuentes") && home.includes("/terminos"), "portada con WhatsApp, preguntas frecuentes y términos");
   const page = await text(get("/s/restaurantes"));
   check(page.includes("Haz tu pedido") && page.includes("Restaurante Completo"), "la tienda muestra paquetes y formulario");
 });
@@ -265,7 +268,7 @@ await step("2. El cliente hace su pedido (paquete Restaurante Completo, USD 180)
     packageId: "estandar", clientName: "Lucía Romero", clientEmail: "lucia@latrattoria.test", clientPhone: "+54 9 11 4567 8910",
     clientDiscord: "lucia.trattoria", clientCountry: "Argentina", businessName: "La Trattoria", businessType: "Restaurante italiano",
     description: "Restaurante italiano familiar en Palermo. Pastas caseras y pizzas a la leña. Queremos que la gente reserve mesa y vea la carta desde el celular.",
-    sections: "Inicio, Carta, Galería, Reservas, Contacto", colors: "rojo y tonos cálidos", domain: "latrattoria.com.ar",
+    sections: "Inicio, Carta, Galería, Reservas, Contacto", colors: "rojo y tonos cálidos", domain: "latrattoria.com.ar", acepto: "1",
   }));
   check(res.status === 303 && location(res).startsWith("/o/"), "el formulario redirige al portal privado del cliente");
   token = location(res).replace(/^\/o\//, "").replace(/\?.*/, "");

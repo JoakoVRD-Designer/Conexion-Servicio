@@ -18,7 +18,7 @@ function tellOwner(text) {
 }
 
 export function revisionInfo(order) {
-  const included = getPackage(getStore(order.storeId), order.packageId)?.revisions ?? 0;
+  const included = (getPackage(getStore(order.storeId), order.packageId)?.revisions ?? 0) + (order.extras || []).reduce((n, e) => n + (e.extraRevisions || 0), 0);
   return { used: order.review.revisionsUsed, included, exceeded: order.review.revisionsUsed > included };
 }
 

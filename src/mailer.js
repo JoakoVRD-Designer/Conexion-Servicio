@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import nodemailer from "nodemailer";
-import { DATA_DIR, isMarketplace } from "./config.js";
+import { DATA_DIR, isMarketplace, getBrand } from "./config.js";
 import { updateOrder } from "./db.js";
 
 let transport;
@@ -44,7 +44,7 @@ export async function sendMail({ to, subject, text }) {
 // Envía un email al cliente del pedido y deja constancia en el historial. Nunca lanza errores.
 export async function emailClient(order, subject, lines) {
   if (isMarketplace(order.channel) || !order.client.email || !mailEnabled()) return false;
-  const text = [`Hola ${order.client.name || ""},`, "", ...lines, "", "Saludos,", process.env.BUSINESS_NAME || "El equipo"].join("\n");
+  const text = [`Hola ${order.client.name || ""},`, "", ...lines, "", "Saludos,", process.env.BUSINESS_NAME || getBrand().name].join("\n");
   try {
     await sendMail({ to: order.client.email, subject, text });
     updateOrder(order.id, (o) => { o.emails.push({ subject, at: new Date().toISOString(), ok: true }); }, `📧 Email al cliente: ${subject}`);

@@ -9,6 +9,8 @@ Este repositorio es el sistema de un freelancer que vende creación de páginas 
 - IA por API (opcional, requiere `ANTHROPIC_API_KEY`): `ia-resumen`, `ia-respuesta`, `ia-sitio`, `ia-cambios`, `ia-gig`
 - Lista completa: `npm run cli -- ayuda`
 
+Material de ventas (gigs de Fiverr, mensajes de prospección, perfiles): `docs/ventas/`. Si el dueño pide ayuda para conseguir clientes, parte de ahí y adapta los textos a cada prospecto.
+
 Los datos viven en `data/db.json` (no lo edites a mano: usa la CLI) y los sitios en `sites/<ID>/index.html`.
 
 ## Rutina recomendada

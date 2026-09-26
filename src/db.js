@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { DATA_DIR, STATUS_IDS, EARNED_STATUSES, CHANNEL_FEES, getStore, getPackage, getCatalog, isMarketplace } from "./config.js";
+import { DATA_DIR, STATUS_IDS, EARNED_STATUSES, CHANNEL_FEES, getStore, getPackage, getCatalog, isMarketplace, quote } from "./config.js";
 
 const DB_FILE = path.join(DATA_DIR, "db.json");
 let db;
@@ -43,6 +43,7 @@ function normalize(o) {
   o.review.approvedAt ??= null;
   o.delivery ??= {};
   o.emails ??= [];
+  o.extras ??= [];
   return o;
 }
 const clean = (v, max = 5000) => (v == null ? "" : String(v).trim().slice(0, max));
@@ -52,7 +53,10 @@ export function createOrder(input) {
   const store = getStore(input.storeId);
   if (!store) throw new Error(`Tienda desconocida: ${input.storeId}`);
   const pkg = getPackage(store, input.packageId);
-  const price = input.price !== undefined && input.price !== "" ? Number(input.price) : pkg?.price ?? 0;
+  // Extras elegidos por el cliente (solo en pedidos directos: en marketplaces el precio lo fija la plataforma).
+  const q = pkg && !isMarketplace(input.channel || store.channel) ? quote(store, pkg.id, input.extras) : null;
+  const price = input.price !== undefined && input.price !== "" ? Number(input.price) : q?.total ?? pkg?.price ?? 0;
+  const deliveryDays = q?.deliveryDays ?? pkg?.deliveryDays;
   if (!Number.isFinite(price) || price < 0) throw new Error("Precio inválido");
 
   const channel = clean(input.channel || store.channel, 20);
@@ -89,8 +93,10 @@ export function createOrder(input) {
       references: clean(input.references, 2000),
       domain: clean(input.domain, 200),
       // Si no hay fecha acordada, se calcula con los días de entrega del paquete.
-      deadline: clean(input.deadline, 40) || (pkg ? new Date(Date.now() + pkg.deliveryDays * 86400000).toISOString().slice(0, 10) : ""),
+      deadline: clean(input.deadline, 40) || (deliveryDays ? new Date(Date.now() + deliveryDays * 86400000).toISOString().slice(0, 10) : ""),
     },
+    extras: (q?.extras ?? []).map(({ id, name, price: p, recurring, extraRevisions }) => ({ id, name, price: p, recurring, extraRevisions })),
+    acceptedTermsAt: input.acceptedTerms ? now() : null,
     messages: [],
     payments: [],
     files: [],

@@ -10,6 +10,7 @@ import { readVersion, addAsset, deleteAsset, assetPath, assetType, buildZip, MAX
 import { paymentRequestText } from "./payments.js";
 import { publishToNetlify, netlifyEnabled } from "./deploy.js";
 import * as v from "./views.js";
+import * as sf from "./storefront.js";
 
 loadEnv();
 const app = express();
@@ -81,23 +82,29 @@ function sendZip(res, order, version) {
 
 // ------------------------------------------------------------------ Público
 
-app.get("/", (req, res) => send(res, v.homePage(getStores())));
+app.get("/", (req, res) => send(res, sf.homePage({ base: baseUrl(req) })));
 
 app.get("/s/:slug", (req, res) => {
   const store = getStoreBySlug(req.params.slug);
   if (!store) return send(res, v.errorPage(404, "Tienda no encontrada"), 404);
-  send(res, v.storePage(store));
+  send(res, sf.storePage(store, { base: baseUrl(req), form: { packageId: String(req.query.plan || "") } }));
 });
+
+app.get("/terminos", (req, res) => send(res, sf.legalPage("terminos", { base: baseUrl(req) })));
+app.get("/privacidad", (req, res) => send(res, sf.legalPage("privacidad", { base: baseUrl(req) })));
+app.get("/robots.txt", (req, res) => res.type("text/plain").send(sf.robotsTxt(baseUrl(req))));
+app.get("/sitemap.xml", (req, res) => res.type("application/xml").send(sf.sitemapXml(baseUrl(req))));
 
 app.post("/s/:slug/pedido", rateLimit, (req, res) => {
   const store = getStoreBySlug(req.params.slug);
   if (!store || isMarketplace(store.channel)) return send(res, v.errorPage(404, "Tienda no encontrada"), 404);
   const f = req.body;
   if (f.website) return res.redirect(303, "/"); // honeypot anti-bots
-  if (!getPackage(store, f.packageId) || !f.clientName || !f.clientEmail || !f.businessName || !f.description) {
-    return send(res, v.storePage(store, "Completa los campos obligatorios.", f), 400);
-  }
-  const order = db.createOrder({ ...f, price: undefined, feePercent: undefined, deadline: undefined, storeId: store.id, channel: "web" });
+  const error = !getPackage(store, f.packageId) || !f.clientName || !f.clientEmail || !f.businessName || !f.description
+    ? "Completa los campos obligatorios (*)."
+    : !f.acepto ? "Para enviar el pedido debes aceptar los términos del servicio y la política de privacidad." : "";
+  if (error) return send(res, sf.storePage(store, { error, form: f, base: baseUrl(req) }), 400);
+  const order = db.createOrder({ ...f, price: undefined, feePercent: undefined, deadline: undefined, acceptedTerms: true, extras: [].concat(f.extras || []), storeId: store.id, channel: "web" });
   background(flows.orderPlaced(order, baseUrl(req)));
   res.redirect(303, `/o/${order.token}?ok=pedido`);
 });
