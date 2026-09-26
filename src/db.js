@@ -18,6 +18,7 @@ function load() {
   db.seq ??= 0;
   db.orders ??= [];
   db.gigs ??= {};
+  db.orders.forEach(normalize);
   return db;
 }
 
@@ -30,6 +31,20 @@ function save() {
 }
 
 const now = () => new Date().toISOString();
+
+// Completa campos que no existían en pedidos creados con versiones anteriores del sistema.
+function normalize(o) {
+  o.payments ??= [];
+  o.files ??= [];
+  o.review ??= {};
+  o.review.sharedVersion ??= null;
+  o.review.revisionsUsed ??= 0;
+  o.review.pendingChanges ??= "";
+  o.review.approvedAt ??= null;
+  o.delivery ??= {};
+  o.emails ??= [];
+  return o;
+}
 const clean = (v, max = 5000) => (v == null ? "" : String(v).trim().slice(0, max));
 
 export function createOrder(input) {
@@ -73,10 +88,15 @@ export function createOrder(input) {
       colors: clean(input.colors, 300),
       references: clean(input.references, 2000),
       domain: clean(input.domain, 200),
-      deadline: clean(input.deadline, 40),
+      // Si no hay fecha acordada, se calcula con los días de entrega del paquete.
+      deadline: clean(input.deadline, 40) || (pkg ? new Date(Date.now() + pkg.deliveryDays * 86400000).toISOString().slice(0, 10) : ""),
     },
     messages: [],
     payments: [],
+    files: [],
+    review: {},
+    delivery: {},
+    emails: [],
     notes: clean(input.notes, 8000),
     ai: { summary: "", draftReply: "", job: null },
     site: { versions: [] },
@@ -84,7 +104,7 @@ export function createOrder(input) {
     createdAt: now(),
     updatedAt: now(),
   };
-  db.orders.push(order);
+  db.orders.push(normalize(order));
   save();
   return order;
 }
@@ -122,6 +142,19 @@ export function updateOrder(id, mutate, event) {
   order.updatedAt = now();
   save();
   return order;
+}
+
+// Tras un reinicio del servidor, las tareas de IA que estaban en curso quedaron interrumpidas.
+export function resetInterruptedJobs() {
+  load();
+  let changed = false;
+  for (const o of db.orders) {
+    if (o.ai.job?.status === "running") {
+      o.ai.job = { ...o.ai.job, status: "error", error: "Interrumpida por un reinicio del servidor. Vuelve a intentarlo." };
+      changed = true;
+    }
+  }
+  if (changed) save();
 }
 
 export function setStatus(id, status) {

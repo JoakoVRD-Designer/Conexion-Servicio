@@ -2,13 +2,19 @@
 // CLI para administrar el negocio desde la terminal (pensada también para que Claude Code la use).
 // Uso: npm run cli -- <comando> [argumentos]    (o: node src/cli.js <comando> ...)
 import fs from "node:fs";
-import { loadEnv, getStores, getStore, getPackage, STATUSES, CHANNELS, statusLabel, isMarketplace } from "./config.js";
+import path from "node:path";
+import { loadEnv, getStores, getStore, getPackage, STATUSES, CHANNELS, statusLabel, isMarketplace, DATA_DIR, SITES_DIR } from "./config.js";
 import { paymentStatus, paymentRequestText } from "./payments.js";
 import * as db from "./db.js";
 import * as ai from "./ai.js";
-import { saveVersion, sitePath } from "./sites.js";
+import { saveVersion, sitePath, addAsset, buildZip, LABELS } from "./sites.js";
+import * as flows from "./flows.js";
+import { publishToNetlify } from "./deploy.js";
+import { createZip } from "./zip.js";
+import { mailEnabled } from "./mailer.js";
 
 loadEnv();
+if (mailEnabled() && !process.env.PUBLIC_URL) console.warn("⚠ Define PUBLIC_URL en .env: los emails al cliente llevan enlaces a su portal.");
 
 const HELP = `Comandos:
   pendientes                     Qué requiere atención ahora (nuevos, mensajes sin leer, entregas próximas)
@@ -29,7 +35,16 @@ const HELP = `Comandos:
   ia-respuesta <ID> [objetivo]   IA: borrador del próximo mensaje al cliente
   ia-sitio <ID>                  IA: genera el sitio web completo
   ia-cambios <ID> "cambios"      IA: aplica cambios al sitio actual
-  ia-gig <tiendaId> [indicaciones]  IA: textos para publicar la tienda/gig`;
+  ia-gig <tiendaId> [indicaciones]  IA: textos para publicar la tienda/gig
+  plantilla <ID>                 Crea una versión del sitio con la plantilla rápida (sin IA, gratis)
+  subir <ID> <archivo> [logo|foto|otro]  Agrega un logo/foto al pedido (queda en sites/<ID>/assets/)
+  enviar-revision <ID>           Envía la vista previa actual al cliente (email + portal)
+  cambios-cliente <ID> "texto"   Registra cambios pedidos por el cliente (cuenta como revisión)
+  aprobar <ID>                   Registra que el cliente aprobó el diseño
+  entregar <ID>                  Marca como entregado y avisa al cliente (descarga habilitada si pagó)
+  publicar <ID>                  Publica el sitio en Netlify (requiere NETLIFY_TOKEN)
+  zip <ID> [destino.zip]         Genera el ZIP del sitio (index.html + assets/) para entregarlo
+  respaldo [destino.zip]         Copia de seguridad de data/ y sites/ en un ZIP`;
 
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 const need = (v, msg) => { if (!v) throw new Error(msg); return v; };
@@ -50,6 +65,9 @@ function show(o) {
     `Notas: ${o.notes || "-"}`,
     isMarketplace(o.channel) ? `Cobro: dentro de ${CHANNELS[o.channel] ?? o.channel}` : `Cobro directo: pagado ${money(paymentStatus(o).paid)} de ${money(o.price)}${(o.payments ?? []).map((p) => `\n  ${p.at.slice(0, 10)} ${money(p.amount)} ${p.method} ${p.note}`).join("")}`,
     `Sitio: ${o.site.versions.length ? `${o.site.versions.length} versiones → ${sitePath(o.id)}` : "sin generar"}`,
+    `Archivos: ${o.files.map((f) => `assets/${f.name} (${LABELS[f.label]}, ${f.from})`).join(", ") || "ninguno"}`,
+    `Revisión: vista previa enviada ${o.review.sharedVersion ? `v${o.review.sharedVersion}` : "no"} · revisiones ${flows.revisionInfo(o).used}/${flows.revisionInfo(o).included}${o.review.approvedAt ? ` · aprobado ${o.review.approvedAt.slice(0, 10)}` : ""}${o.review.pendingChanges ? `\n  Cambios pendientes: ${o.review.pendingChanges}` : ""}`,
+    `Entrega: ${o.delivery.deliveredAt ? `v${o.delivery.version} el ${o.delivery.deliveredAt.slice(0, 10)}` : "pendiente"}${o.delivery.publishedUrl ? ` · publicado en ${o.delivery.publishedUrl}` : ""}`,
     `Mensajes:`, ...o.messages.map((m) => `  [${m.at.slice(0, 16)}] ${m.from === "yo" ? "YO" : "CLIENTE"}${m.read ? "" : " (nuevo)"}: ${m.text}`),
   ];
   if (o.ai.summary) out.push("Análisis IA:", o.ai.summary);
@@ -67,6 +85,8 @@ const commands = {
       ["Con mensajes sin leer", active.filter((o) => o.messages.some((m) => !m.read))],
       ["Entrega en ≤ 2 días o vencida", active.filter((o) => o.brief.deadline && Date.parse(o.brief.deadline) <= soon)],
       ["En progreso sin sitio generado", active.filter((o) => o.status === "en_progreso" && !o.site.versions.length)],
+      ["Cambios pedidos por el cliente sin aplicar", active.filter((o) => o.review.pendingChanges)],
+      ["Aprobados por el cliente, listos para entregar", active.filter((o) => o.status === "aprobado")],
       ["Clientes directos con saldo por cobrar", active.filter((o) => !isMarketplace(o.channel) && o.status !== "nuevo" && paymentStatus(o).due > 0)],
     ];
     for (const [title, list] of groups) console.log(`\n## ${title} (${list.length})\n${list.map(line).join("\n") || "  —"}`);
@@ -86,8 +106,8 @@ const commands = {
   },
   nuevo(json) { const o = db.createOrder(JSON.parse(need(json, "Falta el JSON del pedido"))); console.log(`Creado ${o.id}`); },
   estado(id, status) { db.setStatus(orderOrFail(id).id, status); console.log(`${id} → ${status}`); },
-  mensaje(id, text) { db.addMessage(orderOrFail(id).id, "yo", text); console.log("Mensaje guardado."); },
-  "mensaje-cliente"(id, text) { db.addMessage(orderOrFail(id).id, "cliente", text); console.log("Mensaje del cliente registrado."); },
+  async mensaje(id, text) { await flows.ownerMessage(orderOrFail(id).id, need(text, "Falta el texto"), process.env.PUBLIC_URL); console.log("Mensaje enviado (portal + email si está configurado)."); },
+  "mensaje-cliente"(id, text) { db.addMessage(orderOrFail(id).id, "cliente", need(text, "Falta el texto")); console.log("Mensaje del cliente registrado."); },
   nota(id, text) {
     db.updateOrder(orderOrFail(id).id, (o) => { o.notes = `${o.notes ? `${o.notes}\n` : ""}[${new Date().toISOString().slice(0, 10)}] ${need(text, "Falta el texto")}`; });
     console.log("Nota añadida.");
@@ -111,11 +131,54 @@ const commands = {
     const file = sitePath(o.id);
     if (!fs.existsSync(file)) throw new Error(`No existe ${file}`);
     console.log(`Versión v${saveVersion(o.id, fs.readFileSync(file, "utf8"), note || "Edición manual")} registrada.`);
+    if (o.review.pendingChanges) {
+      flows.changesApplied(o.id);
+      console.log("Cambios pendientes del cliente marcados como resueltos.");
+    }
   },
   async "ia-resumen"(id) { console.log(await ai.summarize(orderOrFail(id).id)); },
   async "ia-respuesta"(id, ...intent) { console.log(await ai.draftReply(orderOrFail(id).id, intent.join(" "))); },
   async "ia-sitio"(id) { const o = orderOrFail(id); console.log(`Generando sitio (puede tardar unos minutos)…`); console.log(`Versión v${await ai.generateSite(o.id)} → ${sitePath(o.id)}`); },
-  async "ia-cambios"(id, ...text) { const o = orderOrFail(id); console.log(`Aplicando cambios…`); console.log(`Versión v${await ai.applyChanges(o.id, need(text.join(" "), "Faltan los cambios"))} → ${sitePath(o.id)}`); },
+  async "ia-cambios"(id, ...text) {
+    const o = orderOrFail(id);
+    const instruction = text.join(" ") || o.review.pendingChanges;
+    console.log(`Aplicando cambios…`);
+    console.log(`Versión v${await ai.applyChanges(o.id, need(instruction, "Faltan los cambios"))} → ${sitePath(o.id)}`);
+    flows.changesApplied(o.id);
+  },
+  plantilla(id) { const o = orderOrFail(id); console.log(`Versión v${flows.templateSite(o.id)} → ${sitePath(o.id)}`); },
+  subir(id, file, label = "foto") {
+    const o = orderOrFail(id);
+    if (!LABELS[label]) throw new Error("Tipo inválido: usa logo, foto u otro");
+    console.log(`Guardado como assets/${addAsset(o.id, path.basename(need(file, "Falta la ruta del archivo")), fs.readFileSync(file), "yo", label)}`);
+  },
+  async "enviar-revision"(id) { const o = orderOrFail(id); console.log(`Vista previa v${await flows.sharePreview(o.id, process.env.PUBLIC_URL)} enviada.`); },
+  async "cambios-cliente"(id, ...text) { const o = await flows.requestChanges(orderOrFail(id).id, text.join(" "), process.env.PUBLIC_URL); console.log(`Registrado (revisión ${o.review.revisionsUsed}).`); },
+  async aprobar(id) { await flows.approve(orderOrFail(id).id, process.env.PUBLIC_URL); console.log("Aprobación registrada."); },
+  async entregar(id) { const o = orderOrFail(id); console.log(`Entregado v${await flows.deliver(o.id, process.env.PUBLIC_URL)}. Descarga habilitada: ${flows.downloadAllowed(db.getOrder(o.id)) ? "sí" : "no (falta pago)"}`); },
+  async publicar(id) { console.log(`Publicado: ${await publishToNetlify(orderOrFail(id).id)}`); },
+  zip(id, dest) {
+    const o = orderOrFail(id);
+    const out = dest || `${o.id}.zip`;
+    fs.writeFileSync(out, buildZip(o.id));
+    console.log(`ZIP guardado en ${out}`);
+  },
+  respaldo(dest) {
+    const entries = [];
+    const walk = (dir, prefix) => {
+      if (!fs.existsSync(dir)) return;
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) walk(full, `${prefix}${e.name}/`);
+        else if (!e.name.endsWith(".tmp")) entries.push({ name: `${prefix}${e.name}`, data: fs.readFileSync(full) });
+      }
+    };
+    walk(DATA_DIR, "data/");
+    walk(SITES_DIR, "sites/");
+    const out = dest || `respaldo-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.zip`;
+    fs.writeFileSync(out, createZip(entries));
+    console.log(`Respaldo con ${entries.length} archivos guardado en ${out}`);
+  },
   async "ia-gig"(storeId, ...extra) {
     need(getStore(storeId), `Tienda desconocida: ${storeId}`);
     const gig = await ai.generateGig(storeId, extra.join(" "));

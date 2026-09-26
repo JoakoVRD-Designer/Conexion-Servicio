@@ -1,23 +1,27 @@
 import path from "node:path";
 import crypto from "node:crypto";
 import express from "express";
-import { ROOT, loadEnv, getStores, getStore, getStoreBySlug, getPackage, CHANNELS } from "./config.js";
+import multer from "multer";
+import { ROOT, loadEnv, getStores, getStore, getStoreBySlug, getPackage, CHANNELS, isMarketplace } from "./config.js";
 import * as db from "./db.js";
 import * as ai from "./ai.js";
-import { readVersion } from "./sites.js";
+import * as flows from "./flows.js";
+import { readVersion, addAsset, deleteAsset, assetPath, assetType, buildZip, MAX_FILE_BYTES } from "./sites.js";
 import { paymentRequestText } from "./payments.js";
-import { notify } from "./notify.js";
+import { publishToNetlify, netlifyEnabled } from "./deploy.js";
 import * as v from "./views.js";
 
 loadEnv();
 const app = express();
 app.set("trust proxy", process.env.TRUST_PROXY === "1");
 app.disable("x-powered-by");
+app.set("strict routing", true); // "/preview" y "/preview/" son rutas distintas (las rutas relativas assets/ dependen de ello)
 app.use(express.urlencoded({ extended: false, limit: "300kb" }));
 app.use(express.static(path.join(ROOT, "public")));
 
 const send = (res, page, status = 200) => res.status(status).type("html").send(String(page));
 const baseUrl = (req) => (process.env.PUBLIC_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+const background = (promise) => promise.catch((e) => console.error("[tarea]", e));
 
 // Límite simple por IP para formularios públicos (evita spam).
 const hits = new Map();
@@ -26,16 +30,53 @@ function rateLimit(req, res, next) {
   const list = (hits.get(key) || []).filter((x) => t - x < windowMs);
   list.push(t);
   hits.set(key, list);
-  if (list.length > 15) return send(res, v.errorPage(429, "Demasiados envíos. Intenta de nuevo en unos minutos."), 429);
+  if (list.length > 30) return send(res, v.errorPage(429, "Demasiados envíos. Intenta de nuevo en unos minutos."), 429);
   next();
 }
 
-// Las vistas previas de sitios generados se sirven en un sandbox para que su JS no pueda actuar sobre el panel.
-function sendSite(res, htmlDoc, download, name) {
+// Subida de archivos (logo, fotos): en memoria, se validan y se guardan en sites/<ID>/assets/.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_BYTES, files: 10 } });
+function receiveFiles(req, res) {
+  return new Promise((resolve, reject) => {
+    upload.array("files", 10)(req, res, (err) => {
+      if (err?.code === "LIMIT_FILE_SIZE") return reject(new Error("Cada archivo puede pesar como máximo 10 MB."));
+      if (err?.code === "LIMIT_FILE_COUNT" || err?.code === "LIMIT_UNEXPECTED_FILE") return reject(new Error("Máximo 10 archivos por envío."));
+      if (err) return reject(err);
+      if (!req.files?.length) return reject(new Error("Selecciona al menos un archivo."));
+      resolve(req.files);
+    });
+  });
+}
+function saveUploads(orderId, files, from, label) {
+  const saved = [], errors = [];
+  for (const f of files) {
+    // multer entrega el nombre en latin1; se convierte a UTF-8 para conservar acentos.
+    const name = Buffer.from(f.originalname, "latin1").toString("utf8");
+    try { saved.push(addAsset(orderId, name, f.buffer, from, label)); } catch (e) { errors.push(e.message); }
+  }
+  return { saved, errors };
+}
+
+// Los sitios y archivos subidos se sirven en un sandbox: su JavaScript no puede actuar sobre el panel ni el portal.
+function sandbox(res) {
   res.set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox");
+  res.set("X-Content-Type-Options", "nosniff");
   res.set("X-Robots-Tag", "noindex");
-  if (download) res.attachment(name);
+}
+function sendSite(res, htmlDoc) {
+  sandbox(res);
   res.type("html").send(htmlDoc);
+}
+function sendAsset(res, orderId, name) {
+  const file = assetPath(orderId, name);
+  if (!file) return send(res, v.errorPage(404, "Archivo no encontrado"), 404);
+  sandbox(res);
+  res.set("Cache-Control", "private, max-age=300");
+  res.type(assetType(name)).sendFile(file);
+}
+function sendZip(res, order, version) {
+  const slug = (order.brief.businessName || "sitio").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "sitio";
+  res.attachment(`${slug}-${order.id}.zip`).type("application/zip").send(buildZip(order.id, version));
 }
 
 // ------------------------------------------------------------------ Público
@@ -48,48 +89,89 @@ app.get("/s/:slug", (req, res) => {
   send(res, v.storePage(store));
 });
 
-app.post("/s/:slug/pedido", rateLimit, async (req, res) => {
+app.post("/s/:slug/pedido", rateLimit, (req, res) => {
   const store = getStoreBySlug(req.params.slug);
-  if (!store || store.channel === "fiverr") return send(res, v.errorPage(404, "Tienda no encontrada"), 404);
+  if (!store || isMarketplace(store.channel)) return send(res, v.errorPage(404, "Tienda no encontrada"), 404);
   const f = req.body;
   if (f.website) return res.redirect(303, "/"); // honeypot anti-bots
   if (!getPackage(store, f.packageId) || !f.clientName || !f.clientEmail || !f.businessName || !f.description) {
     return send(res, v.storePage(store, "Completa los campos obligatorios.", f), 400);
   }
-  const order = db.createOrder({ ...f, price: undefined, feePercent: undefined, storeId: store.id, channel: "web" });
-  notify(`🛒 Nuevo pedido ${order.id} en "${store.name}": ${order.client.name} — ${order.brief.businessName} (${order.price} ${store.packages.find((p) => p.id === order.packageId)?.name})\n${baseUrl(req)}/admin/pedidos/${order.id}`);
-  res.redirect(303, `/o/${order.token}?ok=1`);
+  const order = db.createOrder({ ...f, price: undefined, feePercent: undefined, deadline: undefined, storeId: store.id, channel: "web" });
+  background(flows.orderPlaced(order, baseUrl(req)));
+  res.redirect(303, `/o/${order.token}?ok=pedido`);
 });
 
-app.get("/o/:token", (req, res) => {
-  const order = db.getOrderByToken(req.params.token);
-  if (!order) return send(res, v.errorPage(404, "Pedido no encontrado"), 404);
-  const flash = req.query.ok === "1" ? "¡Pedido recibido! Te contactaremos muy pronto." : req.query.ok === "2" ? "Mensaje enviado." : "";
-  send(res, v.clientPortal(order, flash));
-});
+const PORTAL_FLASH = {
+  pedido: "¡Pedido recibido! Te enviamos un email con este enlace. Ya puedes subir tu logo y fotos aquí abajo.",
+  mensaje: "Mensaje enviado.",
+  archivos: "Archivos recibidos. ¡Gracias!",
+  aprobado: "¡Gracias! Registramos tu aprobación y preparamos la entrega final.",
+  cambios: "Recibimos tus cambios. Te avisaremos cuando la nueva versión esté lista.",
+};
 
-app.post("/o/:token/mensaje", rateLimit, (req, res) => {
-  const order = db.getOrderByToken(req.params.token);
-  if (!order) return send(res, v.errorPage(404, "Pedido no encontrado"), 404);
-  try {
-    db.addMessage(order.id, "cliente", req.body.text);
-  } catch (e) {
-    return send(res, v.errorPage(400, e.message), 400);
-  }
-  notify(`💬 Mensaje nuevo en ${order.id} (${order.client.name}): ${String(req.body.text).slice(0, 300)}\n${baseUrl(req)}/admin/pedidos/${order.id}`);
-  res.redirect(303, `/o/${order.token}?ok=2`);
-});
+// Resuelve el pedido por su enlace privado; si no existe responde 404.
+function withPortal(handler) {
+  return async (req, res) => {
+    const order = db.getOrderByToken(req.params.token);
+    if (!order) return send(res, v.errorPage(404, "Pedido no encontrado"), 404);
+    try {
+      await handler(req, res, order);
+    } catch (e) {
+      res.redirect(303, `/o/${order.token}?e=${encodeURIComponent(e.message)}`);
+    }
+  };
+}
 
-app.get("/o/:token/preview", (req, res) => {
-  const order = db.getOrderByToken(req.params.token);
-  const doc = order && readVersion(order.id);
-  if (!doc) return send(res, v.errorPage(404, "Vista previa no disponible todavía"), 404);
+app.get("/o/:token", withPortal((req, res, order) => {
+  send(res, v.clientPortal(order, Object.hasOwn(PORTAL_FLASH, String(req.query.ok)) ? PORTAL_FLASH[req.query.ok] : "", req.query.e ? String(req.query.e).slice(0, 300) : ""));
+}));
+
+app.post("/o/:token/mensaje", rateLimit, withPortal(async (req, res, order) => {
+  await flows.clientMessage(order.id, req.body.text, baseUrl(req));
+  res.redirect(303, `/o/${order.token}?ok=mensaje`);
+}));
+
+app.post("/o/:token/archivos", rateLimit, withPortal(async (req, res, order) => {
+  if (isMarketplace(order.channel) || order.status === "cancelado") throw new Error("No se pueden subir archivos a este pedido.");
+  const files = await receiveFiles(req, res);
+  const { saved, errors } = saveUploads(order.id, files, "cliente", req.body.label);
+  if (saved.length) await flows.clientMessage(order.id, `📎 Subí ${saved.length} archivo(s): ${saved.join(", ")}`, baseUrl(req));
+  if (errors.length) throw new Error(errors.join(" "));
+  res.redirect(303, `/o/${order.token}?ok=archivos`);
+}));
+
+app.post("/o/:token/aprobar", rateLimit, withPortal(async (req, res, order) => {
+  if (order.status !== "revision") throw new Error("No hay una vista previa pendiente de aprobación.");
+  await flows.approve(order.id, baseUrl(req));
+  res.redirect(303, `/o/${order.token}?ok=aprobado`);
+}));
+
+app.post("/o/:token/cambios", rateLimit, withPortal(async (req, res, order) => {
+  if (order.status !== "revision") throw new Error("Ahora mismo no hay una vista previa para revisar.");
+  await flows.requestChanges(order.id, String(req.body.text || "").slice(0, 8000), baseUrl(req));
+  res.redirect(303, `/o/${order.token}?ok=cambios`);
+}));
+
+// El cliente ve la versión que le enviaste (o la entregada), nunca tu trabajo en curso.
+const portalVersion = (order) => (["entregado", "completado"].includes(order.status) && order.delivery.version) || order.review.sharedVersion;
+
+app.get("/o/:token/preview", (req, res) => res.redirect(301, `/o/${req.params.token}/preview/`));
+app.get("/o/:token/preview/", withPortal((req, res, order) => {
+  const doc = portalVersion(order) && readVersion(order.id, portalVersion(order));
+  if (!doc) return send(res, v.errorPage(404, "La vista previa todavía no está disponible."), 404);
   sendSite(res, doc);
-});
+}));
+app.get("/o/:token/preview/assets/:name", withPortal((req, res, order) => sendAsset(res, order.id, req.params.name)));
+
+app.get("/o/:token/descargar", withPortal((req, res, order) => {
+  if (!flows.downloadAllowed(order)) throw new Error("La descarga se habilita cuando el sitio está entregado y el pago completo.");
+  sendZip(res, order, order.delivery.version);
+}));
 
 // ------------------------------------------------------------------ Admin
 
-const admin = express.Router();
+const admin = express.Router({ strict: true });
 
 admin.use((req, res, next) => {
   const pass = process.env.ADMIN_PASSWORD;
@@ -139,6 +221,7 @@ admin.post("/pedidos", (req, res) => {
   try {
     if (!CHANNELS[req.body.channel]) throw new Error("Canal inválido");
     const order = db.createOrder({ ...req.body, storeId, packageId });
+    background(flows.orderPlaced(order, baseUrl(req)));
     res.redirect(303, `/admin/pedidos/${order.id}?ok=Pedido+creado`);
   } catch (e) {
     send(res, v.newOrderPage({ stores: getStores(), prefill: { ...req.body, storeId, packageId }, error: e.message }), 400);
@@ -156,68 +239,106 @@ function withOrder(handler) {
     }
   };
 }
+const back = (res, order, msg) => res.redirect(303, `/admin/pedidos/${order.id}${msg ? `?ok=${encodeURIComponent(msg)}` : ""}`);
 
 admin.get("/pedidos/:id", withOrder((req, res, order) => {
-  send(res, v.orderDetail(order, { baseUrl: baseUrl(req), flash: req.query.ok, error: req.query.err }));
+  send(res, v.orderDetail(order, { baseUrl: baseUrl(req), flash: req.query.ok, error: req.query.err, netlifyOn: netlifyEnabled() }));
   db.markMessagesRead(order.id);
 }));
 
 admin.post("/pedidos/:id/estado", withOrder((req, res, order) => {
   db.setStatus(order.id, req.body.status);
-  res.redirect(303, `/admin/pedidos/${order.id}?ok=Estado+actualizado`);
+  back(res, order, "Estado actualizado");
 }));
 
-admin.post("/pedidos/:id/mensaje", withOrder((req, res, order) => {
-  const from = req.body.from === "cliente" ? "cliente" : "yo";
-  db.addMessage(order.id, from, req.body.text);
-  if (from === "yo") db.updateOrder(order.id, (o) => { o.ai.draftReply = ""; if (o.status === "nuevo") o.status = "contactado"; });
-  res.redirect(303, `/admin/pedidos/${order.id}?ok=Mensaje+guardado`);
+admin.post("/pedidos/:id/mensaje", withOrder(async (req, res, order) => {
+  if (req.body.from === "cliente") db.addMessage(order.id, "cliente", req.body.text);
+  else await flows.ownerMessage(order.id, req.body.text, baseUrl(req));
+  back(res, order, "Mensaje guardado");
 }));
 
 admin.post("/pedidos/:id/pago", withOrder((req, res, order) => {
   db.addPayment(order.id, req.body.amount, req.body.method, req.body.note);
-  res.redirect(303, `/admin/pedidos/${order.id}?ok=Pago+registrado`);
+  back(res, order, "Pago registrado");
 }));
 
 // Prepara el mensaje de cobro (anticipo o saldo) con los enlaces de PayPal / otros medios configurados.
 admin.post("/pedidos/:id/cobro", withOrder((req, res, order) => {
   const text = paymentRequestText(order);
   db.updateOrder(order.id, (o) => { o.ai.draftReply = text; }, "Mensaje de cobro preparado");
-  res.redirect(303, `/admin/pedidos/${order.id}?ok=Mensaje+de+cobro+listo:+rev%C3%ADsalo+y+env%C3%ADalo`);
+  back(res, order, "Mensaje de cobro listo: revísalo y envíalo");
 }));
 
 admin.post("/pedidos/:id/notas", withOrder((req, res, order) => {
   db.updateOrder(order.id, (o) => { o.notes = String(req.body.notes || "").slice(0, 8000); });
-  res.redirect(303, `/admin/pedidos/${order.id}?ok=Notas+guardadas`);
+  back(res, order, "Notas guardadas");
+}));
+
+admin.post("/pedidos/:id/archivos", withOrder(async (req, res, order) => {
+  const files = await receiveFiles(req, res);
+  const { saved, errors } = saveUploads(order.id, files, "yo", req.body.label);
+  if (errors.length) throw new Error(errors.join(" "));
+  back(res, order, `${saved.length} archivo(s) subido(s)`);
+}));
+
+admin.post("/pedidos/:id/archivos/:name/eliminar", withOrder((req, res, order) => {
+  deleteAsset(order.id, req.params.name);
+  back(res, order, "Archivo eliminado");
+}));
+
+admin.post("/pedidos/:id/plantilla", withOrder((req, res, order) => {
+  const n = flows.templateSite(order.id);
+  back(res, order, `Versión v${n} creada con la plantilla rápida`);
+}));
+
+admin.post("/pedidos/:id/enviar-revision", withOrder(async (req, res, order) => {
+  const n = await flows.sharePreview(order.id, baseUrl(req));
+  back(res, order, isMarketplace(order.channel) ? `v${n} marcada como enviada a revisión` : `Vista previa v${n} enviada al cliente`);
+}));
+
+admin.post("/pedidos/:id/entregar", withOrder(async (req, res, order) => {
+  const n = await flows.deliver(order.id, baseUrl(req));
+  back(res, order, `Pedido entregado (v${n})`);
+}));
+
+admin.post("/pedidos/:id/publicar", withOrder(async (req, res, order) => {
+  const url = await publishToNetlify(order.id);
+  back(res, order, `Publicado en ${url}`);
 }));
 
 admin.post("/pedidos/:id/ia/resumen", withOrder((req, res, order) => {
   ai.runJob(order.id, "análisis del pedido", () => ai.summarize(order.id));
-  res.redirect(303, `/admin/pedidos/${order.id}`);
+  back(res, order);
 }));
 
 admin.post("/pedidos/:id/ia/respuesta", withOrder((req, res, order) => {
   ai.runJob(order.id, "borrador de respuesta", () => ai.draftReply(order.id, String(req.body.intent || "").slice(0, 500)));
-  res.redirect(303, `/admin/pedidos/${order.id}`);
+  back(res, order);
 }));
 
 admin.post("/pedidos/:id/ia/sitio", withOrder((req, res, order) => {
-  ai.runJob(order.id, "generación del sitio", () => ai.generateSite(order.id));
-  res.redirect(303, `/admin/pedidos/${order.id}`);
+  ai.runJob(order.id, "generación del sitio", () => ai.generateSite(order.id), () => {
+    db.updateOrder(order.id, (o) => { if (["nuevo", "contactado"].includes(o.status)) o.status = "en_progreso"; });
+  });
+  back(res, order);
 }));
 
 admin.post("/pedidos/:id/ia/cambios", withOrder((req, res, order) => {
   const instruction = String(req.body.instruction || "").trim().slice(0, 8000);
   if (!instruction) throw new Error("Escribe los cambios a aplicar.");
-  ai.runJob(order.id, "aplicar cambios al sitio", () => ai.applyChanges(order.id, instruction));
-  res.redirect(303, `/admin/pedidos/${order.id}`);
+  ai.runJob(order.id, "aplicar cambios al sitio", () => ai.applyChanges(order.id, instruction), () => flows.changesApplied(order.id));
+  back(res, order);
 }));
 
-admin.get("/pedidos/:id/sitio", withOrder((req, res, order) => {
+admin.get("/pedidos/:id/zip", withOrder((req, res, order) => sendZip(res, order)));
+
+admin.get("/pedidos/:id/sitio", (req, res) => res.redirect(301, `/admin/pedidos/${req.params.id}/sitio/${req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : ""}`));
+admin.get("/pedidos/:id/sitio/", withOrder((req, res, order) => {
   const doc = readVersion(order.id, req.query.v);
   if (!doc) return send(res, v.errorPage(404, "Versión no encontrada", true), 404);
-  sendSite(res, doc, req.query.descargar === "1", `${order.id}-index.html`);
+  sendSite(res, doc);
 }));
+admin.get("/pedidos/:id/sitio/assets/:name", withOrder((req, res, order) => sendAsset(res, order.id, req.params.name)));
 
 const gigJobs = new Map(); // storeId -> estado
 admin.get("/tiendas", (req, res) => {
@@ -246,14 +367,18 @@ app.use((err, req, res, next) => {
   send(res, v.errorPage(500, "Error interno"), 500);
 });
 
-const port = Number(process.env.PORT || 3000);
-if (process.argv[1] && path.resolve(process.argv[1]) === path.join(ROOT, "src", "server.js")) {
-  app.listen(port, () => {
-    console.log(`Tiendas públicas: http://localhost:${port}/`);
-    console.log(`Panel de administración: http://localhost:${port}/admin`);
+export function start(port = Number(process.env.PORT || 3000)) {
+  db.resetInterruptedJobs();
+  const server = app.listen(port, () => {
+    const p = server.address().port;
+    console.log(`Tiendas públicas: http://localhost:${p}/`);
+    console.log(`Panel de administración: http://localhost:${p}/admin`);
     if (!process.env.ADMIN_PASSWORD) console.warn("⚠ Define ADMIN_PASSWORD en .env para activar el panel.");
-    if (!process.env.ANTHROPIC_API_KEY) console.warn("⚠ Sin ANTHROPIC_API_KEY: las funciones de IA no estarán disponibles.");
+    if (!process.env.ANTHROPIC_API_KEY) console.warn("⚠ Sin ANTHROPIC_API_KEY: la IA no estará disponible (la plantilla rápida sí).");
   });
+  return server;
 }
+
+if (process.argv[1] && path.resolve(process.argv[1]) === path.join(ROOT, "src", "server.js")) start();
 
 export default app;

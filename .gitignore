@@ -4,3 +4,6 @@ node_modules/
 data/
 sites/
 *.tmp
+simulacion-resultado/
+respaldo-*.zip
+WEB-*.zip

@@ -1,0 +1,49 @@
+# Despliegue en Render (render.com → New → Blueprint → elige este repositorio).
+# El disco persistente guarda pedidos y sitios; requiere un plan de pago (Starter).
+services:
+  - type: web
+    name: conexion-servicio
+    runtime: node
+    plan: starter
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /
+    disk:
+      name: datos
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /var/data/data
+      - key: SITES_DIR
+        value: /var/data/sites
+      - key: TRUST_PROXY
+        value: "1"
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: BUSINESS_NAME
+        sync: false
+      - key: OWNER_EMAIL
+        sync: false
+      - key: NETLIFY_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false

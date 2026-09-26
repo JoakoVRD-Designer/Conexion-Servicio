@@ -81,11 +81,14 @@ test("registro manual de un pedido de Fiverr e ingresos netos", async () => {
   assert.match(detail, /fiverr\.com\/inbox\/juanp/);
 });
 
-test("vista previa del sitio servida en sandbox", async () => {
+test("vista previa: el cliente solo la ve cuando se la envías, y se sirve en sandbox", async () => {
   const { saveVersion } = await import("../src/sites.js");
   const { getOrder } = await import("../src/db.js");
   saveVersion("WEB-0001", "<!doctype html><html><body>Hola</body></html>", "prueba");
-  const res = await fetch(`${base}/o/${getOrder("WEB-0001").token}/preview`);
+  const url = `${base}/o/${getOrder("WEB-0001").token}/preview/`;
+  assert.equal((await fetch(url)).status, 404, "todavía no se envió al cliente");
+  assert.equal((await post("/admin/pedidos/WEB-0001/enviar-revision", {}, { ...auth, origin: base })).status, 303);
+  const res = await fetch(url);
   assert.equal(res.status, 200);
   assert.match(res.headers.get("content-security-policy"), /sandbox/);
   assert.equal(getOrder("WEB-0001").site.versions.length, 1);

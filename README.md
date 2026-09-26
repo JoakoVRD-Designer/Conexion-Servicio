@@ -18,10 +18,16 @@ Sistema para vender el servicio de **creación de páginas web** desde varias ti
 | Formulario de pedido en tus tiendas propias (con enlace de pago por paquete) | `/s/<slug>` |
 | Ver **quién pidió qué**: cliente, contacto, brief, paquete, precio, canal | `/admin` y `/admin/pedidos/<ID>` |
 | Comunicarte con el cliente: portal con chat, botones de WhatsApp/email con el mensaje ya escrito, enlace al chat de Fiverr | ficha del pedido |
-| Avisos al instante de pedidos y mensajes nuevos (Telegram o webhook) | `.env` |
+| **El cliente sube su logo y fotos** desde su portal (se validan y se usan en el sitio) | portal del cliente |
+| **Revisión**: envías la vista previa, el cliente la **aprueba** o **pide cambios** (se cuentan contra las revisiones del paquete) | portal del cliente |
+| **Entrega**: ZIP listo para cualquier hosting; el cliente directo lo descarga **solo cuando pagó el total** | portal y panel |
+| **Emails automáticos al cliente**: confirmación del pedido, mensajes, vista previa lista, sitio terminado | `.env` (SMTP) |
+| **Publicación con un clic en Netlify** (hosting gratis con HTTPS) | botón “Publicar en Netlify” |
+| **Plantilla rápida sin IA** (gratis e instantánea) para tener una primera versión en segundos | botón “Plantilla rápida” |
+| Avisos al instante de pedidos, mensajes, cambios y aprobaciones (Telegram, webhook o email) | `.env` |
 | **IA**: analizar el pedido (resumen, preguntas faltantes, estructura, extras para vender) | botón “Analizar pedido” |
 | **IA**: redactar la respuesta al cliente (respetando las reglas de Fiverr) | botón “Redactar respuesta” |
-| **IA**: generar el sitio web completo (HTML responsive listo para entregar) | botón “Generar el sitio web” |
+| **IA**: generar el sitio web completo (HTML responsive listo para entregar), **viendo las fotos del cliente** | botón “Generar con IA” |
 | **IA**: aplicar cambios pedidos por el cliente, con historial de versiones | “Aplicar cambios” |
 | **IA**: importar un pedido de Fiverr pegando el texto | `/admin/pedidos/nuevo` |
 | **IA**: escribir el título, descripción, etiquetas y FAQ de cada gig/tienda | `/admin/tiendas` |
@@ -31,7 +37,7 @@ Sistema para vender el servicio de **creación de páginas web** desde varias ti
 
 ## Puesta en marcha
 
-Requiere Node.js 20 o superior.
+Requiere Node.js 22 o superior.
 
 ```bash
 npm install
@@ -42,7 +48,23 @@ npm start
 - Tiendas públicas: http://localhost:3000/
 - Panel: http://localhost:3000/admin (usuario `admin` y la clave de `ADMIN_PASSWORD`)
 
-La clave de la IA se obtiene en https://console.anthropic.com/. Sin ella todo funciona salvo los botones de IA. El modelo por defecto es `claude-opus-5` (se puede cambiar con `AI_MODEL`).
+La clave de la IA se obtiene en https://console.anthropic.com/. Sin ella todo funciona salvo los botones de IA (la plantilla rápida sí funciona). El modelo por defecto es `claude-opus-5` (se puede cambiar con `AI_MODEL`).
+
+### Probar todo con la simulación
+
+```bash
+npm run simulacion
+```
+
+Recorre el ciclo completo de dos pedidos con un cliente “de verdad” (por HTTP, como un navegador) y te deja en `simulacion-resultado/` un `INFORME.md` con cada verificación, los sitios generados, el ZIP que descargó la clienta, los emails y los avisos. Si tienes `ANTHROPIC_API_KEY` en `.env` usa **Claude real** (gasta unos pocos dólares de API); con `npm run simulacion -- --offline` usa una API de Claude simulada. Netlify, emails y Telegram siempre se simulan: la simulación nunca contacta a nadie de verdad ni toca tus datos reales.
+
+### Emails al cliente (recomendado)
+
+Sin email, el cliente solo ve tus respuestas si entra a su portal. Configura SMTP en `.env` (con Gmail: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, tu correo en `SMTP_USER` y una **contraseña de aplicación** en `SMTP_PASS`). Se envían solos: confirmación del pedido con su enlace privado, tus mensajes, “tu vista previa está lista” y “tu sitio está terminado”. Nunca se envían a clientes de marketplaces. Define también `PUBLIC_URL` para que los enlaces de los emails apunten a tu dominio.
+
+### Publicar en Netlify con un clic (opcional)
+
+Crea un token en app.netlify.com → User settings → Applications → Personal access tokens y ponlo en `NETLIFY_TOKEN`. En la ficha del pedido aparece “Publicar en Netlify”: crea el sitio (`negocio-web-0001.netlify.app`) y lo actualiza en cada nueva publicación. Luego el cliente puede conectar su dominio desde Netlify.
 
 ### Avisos al celular (recomendado)
 
@@ -112,14 +134,16 @@ Los canales Workana, Upwork, Freelancer.com, PeoplePerHour, Malt y Contra ya exi
 
 ## Flujo de trabajo diario
 
-1. **Llega un pedido** → te avisa por Telegram.
-   - Tienda propia: se registra solo.
-   - Fiverr: en *Nuevo pedido* pega el texto del pedido y la IA rellena los datos.
+1. **Llega un pedido** → te avisa (Telegram/email) y al cliente le llega un email con su enlace privado.
+   - Tienda propia: se registra solo. El cliente sube su logo y fotos desde su portal.
+   - Fiverr: en *Nuevo pedido* pega el texto del pedido y la IA rellena los datos. Los archivos que te mande por Fiverr los subes tú en la ficha.
 2. **Analizar pedido** → la IA te dice qué falta preguntar y propone la estructura.
-3. **Redactar respuesta** → revisas, ajustas y envías (portal del cliente / WhatsApp / chat de Fiverr). Estado: *Contactado*.
-4. **Generar el sitio web** → vista previa para ti y para el cliente (en su portal). Estado: *En revisión*.
-5. El cliente pide cambios → **Aplicar cambios** con IA (cada cambio es una versión nueva, puedes volver a cualquiera).
-6. **Descargar index.html** y entregarlo (o publicarlo en Netlify / Vercel / GitHub Pages / hosting del cliente). Estado: *Entregado* → *Completado* cuando cobras.
+3. **Redactar respuesta** → revisas, ajustas y envías. Estado: *Contactado*.
+4. **Cobrar el anticipo** (clientes directos) → “Preparar mensaje de cobro” y, cuando llegue, “Registrar pago recibido”.
+5. **Generar el sitio** con IA (o la plantilla rápida). Solo tú lo ves hasta que pulsas **“Enviar vista previa al cliente”**. Estado: *En revisión*.
+6. El cliente **aprueba** o **pide cambios** desde su portal. Los cambios te llegan precargados → **Aplicar cambios** con IA → nueva versión → vuelves a enviarla.
+7. **Publicar en Netlify** (opcional) y **Entregar**: el cliente recibe el email “tu sitio está terminado”; puede descargar el ZIP cuando haya pagado el total. En Fiverr: descarga el ZIP del panel y súbelo en la entrega del pedido.
+8. Marca *Completado* cuando todo esté cobrado.
 
 ## Administrar con Claude Code
 
@@ -141,12 +165,19 @@ Comandos de la CLI: `npm run cli -- ayuda`.
 
 ## Publicar el sistema en internet
 
-Cualquier hosting de Node.js sirve (Render, Railway, Fly.io, un VPS…):
+**Opción fácil: Render** (render.com). El repositorio incluye `render.yaml`: en Render elige *New → Blueprint*, conecta este repositorio y completa las variables que te pida (`PUBLIC_URL`, `ANTHROPIC_API_KEY`, SMTP…). Crea el servidor con un disco persistente de 1 GB (requiere el plan Starter, unos USD 7/mes más el disco). La contraseña del panel (`ADMIN_PASSWORD`) se genera sola: la ves en *Environment*.
 
-- Comando de inicio: `npm start`. Variables: las de `.env.example` (`TRUST_PROXY=1` y `PUBLIC_URL` si hay proxy/dominio).
-- **Necesitas un disco persistente** montado para `data/` y `sites/` (o usa `DATA_DIR` y `SITES_DIR` para apuntar a él). Sin disco persistente, los pedidos se pierden en cada reinicio.
-- Usa HTTPS (el panel usa autenticación básica) y una contraseña fuerte.
-- Haz copias de seguridad de `data/db.json` y `sites/`.
+**Con Docker** (cualquier VPS):
+
+```bash
+docker build -t conexion-servicio .
+docker run -d --restart unless-stopped -p 3000:3000 --env-file .env -v conexion-datos:/datos conexion-servicio
+```
+
+En todos los casos:
+- **Necesitas un disco persistente** para los datos (`DATA_DIR` y `SITES_DIR`; en Docker ya apuntan al volumen `/datos`). Sin él, los pedidos se pierden en cada reinicio.
+- Usa HTTPS (el panel usa autenticación básica) y una contraseña fuerte. Define `PUBLIC_URL` con tu dominio.
+- Copias de seguridad: `npm run cli -- respaldo` genera un ZIP con todos los pedidos y sitios.
 
 ## Estructura
 
@@ -157,8 +188,14 @@ src/views.js         Páginas HTML
 src/db.js            Base de datos (data/db.json)
 src/ai.js            Integración con Claude
 src/payments.js      Cobros directos (PayPal, Mercado Pago...) y estado de pagos
-src/sites.js         Versiones de los sitios generados (sites/<ID>/)
+src/flows.js         Acciones del negocio (pedido, mensajes, vista previa, aprobación, cambios, entrega)
+src/sites.js         Versiones de los sitios y archivos del cliente (sites/<ID>/, sites/<ID>/assets/)
+src/templates.js     Plantilla rápida sin IA
+src/mailer.js        Emails al cliente (SMTP)
+src/deploy.js        Publicación en Netlify
+src/zip.js           Generador de ZIP para las entregas
 src/notify.js        Avisos por Telegram / webhook
 src/cli.js           Línea de comandos para administrar (y para Claude Code)
-test/                Pruebas (npm test)
+scripts/simulacion.js  Simulación completa del negocio (npm run simulacion)
+test/                Pruebas (npm test; incluye la simulación)
 ```

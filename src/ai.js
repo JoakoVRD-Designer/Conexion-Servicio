@@ -3,7 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getStore, getPackage, getCatalog, CHANNELS, statusLabel, isMarketplace } from "./config.js";
 import { updateOrder, getOrder } from "./db.js";
-import { saveVersion, currentHtml } from "./sites.js";
+import { saveVersion, currentHtml, readAsset, LABELS } from "./sites.js";
 import { paymentStatus, paymentOptions, paymentInstructions } from "./payments.js";
 
 const MODEL = () => process.env.AI_MODEL || "claude-opus-5";
@@ -78,6 +78,7 @@ Referencias: ${b.references}
 Dominio: ${b.domain}
 Fecha deseada: ${b.deadline}
 Notas internas del vendedor: ${order.notes}
+Archivos del cliente (en la carpeta assets/): ${order.files.length ? order.files.map((f) => `assets/${f.name} (${LABELS[f.label] ?? f.label})`).join(", ") : "ninguno"}
 </pedido>
 <conversacion>
 ${convo || "(sin mensajes todavía)"}
@@ -132,21 +133,39 @@ Devuelve solo el texto del mensaje, listo para enviar, sin comentarios adicional
 const SITE_RULES = `Requisitos técnicos del sitio:
 - Un único archivo HTML completo y autocontenido (CSS y JS en línea), empezando por <!DOCTYPE html>.
 - Responsive (móvil primero), accesible (contraste, alt, etiquetas), rápido, SEO básico (title, meta description, Open Graph, datos estructurados si aplica).
-- Sin frameworks externos obligatorios; solo se permiten Google Fonts. Para imágenes usa https://images.unsplash.com/ con parámetros de tamaño, o degradados/SVG en línea.
+- Sin frameworks externos obligatorios; solo se permiten Google Fonts.
+- Imágenes: si el pedido tiene archivos del cliente, úsalos con rutas relativas exactamente como "assets/<nombre>" (el logo en la cabecera y como favicon; las fotos donde encajen según lo que muestran). Para lo que falte usa https://images.unsplash.com/ con parámetros de tamaño, o degradados/SVG en línea. Nunca inventes nombres de archivos en assets/.
 - Textos reales y persuasivos adaptados al negocio (nada de "lorem ipsum"). Si falta un dato (teléfono, dirección), usa un marcador claro como [TELÉFONO].
 - Si hay WhatsApp o formulario, déjalos funcionales (enlace wa.me / mailto) o marcados para configurar.
 - Diseño moderno y profesional, coherente con los colores/estilo pedidos.
 Devuelve únicamente el HTML dentro de un bloque \`\`\`html.`;
+
+// Las imágenes del cliente se envían a Claude para que vea qué muestran y las ubique bien en el sitio.
+const VISION_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+function imageBlocks(order) {
+  const blocks = [];
+  for (const f of order.files) {
+    if (blocks.length >= 16 || !VISION_TYPES.includes(f.type) || f.size > 3_700_000) continue;
+    const data = readAsset(order.id, f.name);
+    if (!data) continue;
+    blocks.push({ type: "text", text: `Imagen assets/${f.name} (${LABELS[f.label] ?? f.label}):` });
+    blocks.push({ type: "image", source: { type: "base64", media_type: f.type, data: data.toString("base64") } });
+  }
+  return blocks;
+}
 
 export async function generateSite(orderId) {
   const order = getOrder(orderId);
   const text = await ask({
     effort: "high",
     system: `${BUSINESS_CONTEXT}\nAdemás eres un diseñador y desarrollador web senior.`,
-    prompt: `${orderContext(order)}
+    prompt: [
+      ...imageBlocks(order),
+      { type: "text", text: `${orderContext(order)}
 
 Crea la primera versión del sitio web para este pedido, respetando lo que incluye el paquete contratado.
-${SITE_RULES}`,
+${SITE_RULES}` },
+    ],
   });
   return saveVersion(orderId, extractHtml(text), "Primera versión generada por IA");
 }
@@ -158,7 +177,9 @@ export async function applyChanges(orderId, instruction) {
   const text = await ask({
     effort: "high",
     system: `${BUSINESS_CONTEXT}\nAdemás eres un diseñador y desarrollador web senior que aplica cambios de clientes con precisión, sin romper lo que ya funciona.`,
-    prompt: `${orderContext(order)}
+    prompt: [
+      ...imageBlocks(order),
+      { type: "text", text: `${orderContext(order)}
 
 <sitio_actual>
 ${html}
@@ -169,18 +190,23 @@ Cambios a aplicar (pedidos por el cliente o el vendedor):
 ${instruction}
 </cambios>
 
-Aplica los cambios y conserva todo lo demás. ${SITE_RULES}`,
+Aplica los cambios y conserva todo lo demás. ${SITE_RULES}` },
+    ],
   });
   return saveVersion(orderId, extractHtml(text), `Cambios: ${instruction}`);
 }
 
 // Ejecuta una tarea larga en segundo plano y deja el estado visible en el pedido.
-export function runJob(orderId, type, fn) {
+// Devuelve una promesa que se resuelve al terminar (útil para la CLI y las pruebas); el panel no la espera.
+export function runJob(orderId, type, fn, onDone) {
   const order = getOrder(orderId);
   if (order.ai.job?.status === "running") throw new Error("Ya hay una tarea de IA en curso para este pedido.");
   updateOrder(orderId, (o) => { o.ai.job = { type, status: "running", startedAt: new Date().toISOString() }; });
-  fn()
-    .then(() => updateOrder(orderId, (o) => { o.ai.job = { ...o.ai.job, status: "ok", endedAt: new Date().toISOString() }; }))
+  return fn()
+    .then((result) => {
+      updateOrder(orderId, (o) => { o.ai.job = { ...o.ai.job, status: "ok", endedAt: new Date().toISOString() }; });
+      onDone?.(result);
+    })
     .catch((err) => {
       console.error(`[IA] ${type} ${orderId}:`, err);
       updateOrder(orderId, (o) => { o.ai.job = { ...o.ai.job, status: "error", error: describeError(err), endedAt: new Date().toISOString() }; });

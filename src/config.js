@@ -24,6 +24,7 @@ export const STATUSES = [
   { id: "contactado", label: "Contactado" },
   { id: "en_progreso", label: "En progreso" },
   { id: "revision", label: "En revisión del cliente" },
+  { id: "aprobado", label: "Aprobado por el cliente" },
   { id: "entregado", label: "Entregado" },
   { id: "completado", label: "Completado / cobrado" },
   { id: "cancelado", label: "Cancelado" },

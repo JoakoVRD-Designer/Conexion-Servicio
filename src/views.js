@@ -1,6 +1,8 @@
 // Plantillas HTML. Todo valor interpolado se escapa salvo que se marque con raw().
 import { STATUSES, CHANNELS, statusLabel, getStore, getPackage, getCatalog, isMarketplace } from "./config.js";
 import { paymentStatus, paymentOptions, paymentInstructions } from "./payments.js";
+import { revisionInfo, downloadAllowed } from "./flows.js";
+import { LABELS, MAX_FILES_PER_ORDER } from "./sites.js";
 
 class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
 export const raw = (s) => new Raw(String(s));
@@ -76,7 +78,7 @@ ${isFiverr
   });
 }
 
-export function clientPortal(order, flash) {
+export function clientPortal(order, flash, error) {
   const store = getStore(order.storeId);
   const pkg = getPackage(store, order.packageId);
   const idx = STATUSES.findIndex((s) => s.id === order.status);
@@ -85,12 +87,14 @@ export function clientPortal(order, flash) {
     title: `Pedido ${order.id}`,
     accent: store?.accent,
     body: html`<header class="hero small"><h1>Tu pedido ${order.id}</h1><p>${store?.name} · ${pkg?.name ?? order.packageId}</p></header>
-${flash ? html`<p class="alert ok">${flash}</p>` : ""}
-<section class="card"><p class="muted">Guarda este enlace: aquí verás el avance y podrás escribirnos.</p>
+${flash ? html`<p class="alert ok">${flash}</p>` : ""}${error ? html`<p class="alert error">${error}</p>` : ""}
+<section class="card"><p class="muted">Guarda este enlace: aquí verás el avance, podrás enviarnos tus archivos y escribirnos.</p>
 ${order.status === "cancelado" ? html`<p>${badge("cancelado")}</p>` : html`<ol class="steps">${steps.map((s, i) => html`<li class="${i <= idx ? "done" : ""}">${s.label}</li>`)}</ol>`}
-${order.site.versions.length ? html`<p><a class="btn secondary" href="/o/${order.token}/preview" target="_blank">Ver la vista previa de tu web ↗</a></p>` : ""}
 </section>
+${portalDelivery(order)}
+${portalReview(order)}
 ${portalPayment(order)}
+${filesCard(order, "cliente")}
 ${portalDiscord(order)}
 <section class="card"><h2>Mensajes</h2>${messageList(order.messages, "cliente")}
 <form method="post" action="/o/${order.token}/mensaje" class="form"><label>Escríbenos (cambios, dudas, textos, fotos por enlace...)<textarea name="text" rows="4" required maxlength="8000"></textarea></label><button class="btn">Enviar mensaje</button></form></section>`,
@@ -109,6 +113,54 @@ function portalPayment(order) {
   <div class="actions">${options.map((o) => html`<a class="btn" href="${o.url}" target="_blank" rel="noopener">${o.label}</a>`)}</div>
   ${instructions ? html`<pre class="summary">${instructions}</pre>` : ""}
   <p class="muted small">Cuando pagues, escríbenos abajo para confirmarlo.</p></section>`;
+}
+
+function portalReview(order) {
+  if (!order.review.sharedVersion || ["entregado", "completado", "cancelado"].includes(order.status)) return "";
+  const rev = revisionInfo(order);
+  return html`<section class="card highlight"><h2>Tu vista previa</h2>
+  <p><a class="btn" href="/o/${order.token}/preview/" target="_blank">Ver mi sitio web ↗</a></p>
+  <p class="muted small">Revisiones usadas: ${rev.used} de ${rev.included} incluidas en tu paquete.</p>
+  ${order.status === "aprobado" ? html`<p class="alert ok">Aprobaste el diseño. Estamos preparando la entrega final.</p>`
+    : order.status === "revision" ? html`
+  <div class="review-actions">
+    <form method="post" action="/o/${order.token}/aprobar"><button class="btn ok-btn">✅ Aprobar diseño</button></form>
+    <form method="post" action="/o/${order.token}/cambios" class="form"><label>¿Qué te gustaría cambiar?<textarea name="text" rows="4" required maxlength="8000" placeholder="Ej.: cambiar el color a verde, agregar mi dirección, usar otra foto en la portada..."></textarea></label>
+      ${rev.used >= rev.included ? html`<p class="alert info small">Ya usaste las revisiones incluidas; los cambios adicionales pueden tener un costo extra.</p>` : ""}
+      <button class="btn secondary">✏️ Pedir cambios</button></form>
+  </div>` : html`<p class="alert info">Estamos aplicando tus cambios. Te avisaremos cuando la nueva versión esté lista.</p>`}
+  </section>`;
+}
+
+function portalDelivery(order) {
+  if (!["entregado", "completado"].includes(order.status) || !order.delivery.version) return "";
+  const pub = order.delivery.publishedUrl;
+  return html`<section class="card highlight"><h2>🎉 ¡Tu sitio está terminado!</h2>
+  ${pub ? html`<p>Publicado en: <a href="${pub}" target="_blank" rel="noopener"><b>${pub}</b></a></p>` : ""}
+  <p><a class="btn secondary" href="/o/${order.token}/preview/" target="_blank">Ver sitio final ↗</a></p>
+  ${downloadAllowed(order)
+    ? html`<p><a class="btn" href="/o/${order.token}/descargar">⬇️ Descargar archivos (ZIP)</a></p><p class="muted small">Contiene index.html y la carpeta assets/, listos para subir a cualquier hosting.</p>`
+    : html`<p class="alert info">La descarga de los archivos se habilita al completar el pago pendiente (abajo).</p>`}
+  </section>`;
+}
+
+// Tarjeta de archivos (logo y fotos). mode: "cliente" (portal) o "yo" (panel).
+function filesCard(order, mode) {
+  if (mode === "cliente" && (isMarketplace(order.channel) || order.status === "cancelado")) return "";
+  const base = mode === "cliente" ? `/o/${order.token}` : `/admin/pedidos/${order.id}`;
+  const src = (f) => `${base}/${mode === "cliente" ? "preview" : "sitio"}/assets/${encodeURIComponent(f.name)}`;
+  const full = order.files.length >= MAX_FILES_PER_ORDER;
+  return html`<section class="card"><h2>${mode === "cliente" ? "Tus archivos (logo y fotos)" : "Archivos del sitio"}</h2>
+  ${order.files.length ? html`<div class="files">${order.files.map((f) => html`<figure class="file">
+    ${f.type.startsWith("image/") ? html`<a href="${src(f)}" target="_blank"><img class="${f.label === "logo" ? "logo" : ""}" src="${src(f)}" alt="${f.name}" loading="lazy"></a>` : html`<a class="pdf" href="${src(f)}" target="_blank">PDF</a>`}
+    <figcaption><b>${LABELS[f.label] ?? f.label}</b> · ${f.name}<br><small class="muted">${f.from === "yo" ? "subido por ti" : "subido por el cliente"} · ${Math.ceil(f.size / 1024)} KB</small>
+    ${mode === "yo" ? html`<form method="post" action="${base}/archivos/${encodeURIComponent(f.name)}/eliminar"><button class="link-btn">Eliminar</button></form>` : ""}</figcaption></figure>`)}</div>`
+    : html`<p class="muted">${mode === "cliente" ? "Envíanos tu logo y fotos de tu negocio para usarlos en tu web." : "Sin archivos todavía."}</p>`}
+  ${full ? html`<p class="muted small">Se alcanzó el máximo de ${MAX_FILES_PER_ORDER} archivos.</p>` : html`<form method="post" action="${base}/archivos" enctype="multipart/form-data" class="form upload">
+    <div class="row"><label>Archivos (JPG, PNG, WEBP, SVG, PDF · máx. 10 MB c/u)<input type="file" name="files" multiple required accept=".jpg,.jpeg,.png,.webp,.gif,.svg,.ico,.pdf"></label>
+    <label>Tipo<select name="label"><option value="foto">Foto</option><option value="logo">Logo</option><option value="otro">Otro</option></select></label></div>
+    <button class="btn small">Subir archivos</button></form>`}
+  </section>`;
 }
 
 function portalDiscord(order) {
@@ -158,7 +210,7 @@ export function dashboard({ stats, orders, stores, filters }) {
     body: html`<section class="kpis">
   <div class="kpi"><span>Pedidos</span><b>${stats.total}</b></div>
   <div class="kpi"><span>Nuevos</span><b>${stats.byStatus.nuevo}</b></div>
-  <div class="kpi"><span>En curso</span><b>${stats.byStatus.contactado + stats.byStatus.en_progreso + stats.byStatus.revision}</b></div>
+  <div class="kpi"><span>En curso</span><b>${stats.byStatus.contactado + stats.byStatus.en_progreso + stats.byStatus.revision + stats.byStatus.aprobado}</b></div>
   <div class="kpi"><span>Mensajes sin leer</span><b>${stats.unread}</b></div>
   <div class="kpi"><span>Ganado (neto de comisiones)</span><b>${money(stats.earnedNet)}</b></div>
   <div class="kpi"><span>Por cobrar (en curso)</span><b>${money(stats.pipelineGross)}</b></div>
@@ -243,7 +295,35 @@ function contactLinks(order) {
   return links;
 }
 
-export function orderDetail(order, { baseUrl, flash, error }) {
+function adminSite(order, running, netlifyOn) {
+  const id = order.id, versions = order.site.versions, market = isMarketplace(order.channel);
+  const rev = revisionInfo(order), dis = running ? raw("disabled") : "";
+  return html`<section class="card"><h2>Sitio web</h2>
+  <div class="actions">
+    <form method="post" action="/admin/pedidos/${id}/plantilla"><button class="btn small secondary" ${dis}>⚡ ${versions.length ? "Nueva versión con plantilla" : "Plantilla rápida (sin IA)"}</button></form>
+    <form method="post" action="/admin/pedidos/${id}/ia/sitio"><button class="btn small ai" ${dis}>🤖 ${versions.length ? "Regenerar con IA desde cero" : "Generar con IA"}</button></form>
+  </div>
+  ${versions.length ? html`
+  <p class="actions"><a class="btn small" href="/admin/pedidos/${id}/sitio/" target="_blank">Ver versión actual (v${versions.at(-1).n}) ↗</a>
+    <a class="btn small secondary" href="/admin/pedidos/${id}/zip">⬇️ Descargar ZIP</a></p>
+  <p class="muted small">Vista previa enviada: ${order.review.sharedVersion ? `v${order.review.sharedVersion}` : "no"} · Revisiones del cliente: ${rev.used} de ${rev.included}${rev.exceeded ? " (superó las incluidas: puedes cobrar extra)" : ""}${order.review.approvedAt ? ` · ✅ aprobado ${date(order.review.approvedAt)}` : ""}</p>
+  ${order.review.pendingChanges ? html`<div class="alert info"><b>✏️ Cambios pedidos por el cliente:</b><br><span class="pre">${order.review.pendingChanges}</span></div>` : ""}
+  <form method="post" action="/admin/pedidos/${id}/ia/cambios" class="form"><label>Cambios a aplicar con IA<textarea name="instruction" rows="4" required placeholder="Cambiar el color principal a verde, agregar sección de testimonios, poner el teléfono +54...">${order.review.pendingChanges}</textarea></label>
+    <button class="btn small ai" ${dis}>🤖 Aplicar cambios</button></form>
+  <div class="actions step-actions">
+    <form method="post" action="/admin/pedidos/${id}/enviar-revision"><button class="btn small">${market ? "📤 Marcar como enviada a revisión" : "📤 Enviar vista previa al cliente"}</button></form>
+    <form method="post" action="/admin/pedidos/${id}/entregar"><button class="btn small ok-btn">📦 Entregar (v${versions.at(-1).n})</button></form>
+    ${netlifyOn ? html`<form method="post" action="/admin/pedidos/${id}/publicar"><button class="btn small secondary" ${dis}>🌐 ${order.delivery.publishedUrl ? "Actualizar en Netlify" : "Publicar en Netlify"}</button></form>` : ""}
+  </div>
+  ${market ? html`<p class="muted small">En ${CHANNELS[order.channel] ?? order.channel}, envía capturas de la vista previa por su chat y entrega subiendo el ZIP en la entrega del pedido.</p>` : ""}
+  ${order.delivery.publishedUrl ? html`<p>🌐 Publicado: <a href="${order.delivery.publishedUrl}" target="_blank" rel="noopener">${order.delivery.publishedUrl}</a> (v${order.delivery.publishedVersion})</p>` : ""}
+  ${order.delivery.deliveredAt ? html`<p class="muted small">📦 Entregado v${order.delivery.version} el ${date(order.delivery.deliveredAt)}</p>` : ""}
+  <ul class="versions">${[...versions].reverse().map((v) => html`<li><a href="/admin/pedidos/${id}/sitio/?v=${v.n}" target="_blank">v${v.n}</a> · ${date(v.at)} — ${v.note}</li>`)}</ul>`
+  : html`<p class="muted">Aún no hay sitio. Usa la plantilla rápida o la IA, o edita <code>sites/${id}/index.html</code> y regístralo con la CLI.</p>`}
+</section>`;
+}
+
+export function orderDetail(order, { baseUrl, flash, error, netlifyOn }) {
   const store = getStore(order.storeId);
   const pkg = getPackage(store, order.packageId);
   const c = order.client, b = order.brief, job = order.ai.job;
@@ -283,18 +363,11 @@ ${adminPayment(order)}
 <section class="card"><h2>🤖 Asistente IA</h2>
   <div class="actions">
     <form method="post" action="/admin/pedidos/${order.id}/ia/resumen"><button class="btn small ai" ${running ? raw("disabled") : ""}>Analizar pedido</button></form>
-    <form method="post" action="/admin/pedidos/${order.id}/ia/sitio"><button class="btn small ai" ${running ? raw("disabled") : ""}>${order.site.versions.length ? "Regenerar sitio desde cero" : "Generar el sitio web"}</button></form>
   </div>
   ${order.ai.summary ? html`<pre class="summary">${order.ai.summary}</pre>` : html`<p class="muted">Pulsa “Analizar pedido” para obtener resumen, preguntas para el cliente y estructura propuesta.</p>`}
 </section>
-<section class="card"><h2>Sitio web</h2>
-${order.site.versions.length ? html`<p><a class="btn small" href="/admin/pedidos/${order.id}/sitio" target="_blank">Ver versión actual ↗</a>
-  <a class="btn small secondary" href="/admin/pedidos/${order.id}/sitio?descargar=1">Descargar index.html</a></p>
-  <form method="post" action="/admin/pedidos/${order.id}/ia/cambios" class="form"><label>Cambios a aplicar con IA<textarea name="instruction" rows="4" required placeholder="Cambiar el color principal a verde, agregar sección de testimonios, poner el teléfono +54..."></textarea></label>
-  <button class="btn small ai" ${running ? raw("disabled") : ""}>🤖 Aplicar cambios</button></form>
-  <ul class="versions">${[...order.site.versions].reverse().map((v) => html`<li><a href="/admin/pedidos/${order.id}/sitio?v=${v.n}" target="_blank">v${v.n}</a> · ${date(v.at)} — ${v.note}</li>`)}</ul>`
-  : html`<p class="muted">Aún no hay sitio. Genéralo con IA o edita <code>sites/${order.id}/index.html</code> y regístralo con la CLI.</p>`}
-</section>
+${adminSite(order, running, netlifyOn)}
+${filesCard(order, "yo")}
 <section class="card"><h2>Notas internas</h2><form method="post" action="/admin/pedidos/${order.id}/notas" class="form"><textarea name="notes" rows="4">${order.notes}</textarea><button class="btn small secondary">Guardar notas</button></form></section>
 <section class="card"><h2>Historial</h2><ul class="history">${[...order.history].reverse().map((h) => html`<li><small>${date(h.at)}</small> ${h.event}</li>`)}</ul></section>
 </div></div>`,
