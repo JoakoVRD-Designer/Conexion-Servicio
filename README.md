@@ -105,6 +105,14 @@ El portal del cliente muestra el botón “Unirme a Discord” y la IA puede ofr
 
 Reinicia el servidor después de editarlo.
 
+## Portafolio: tu mejor demostración (DORN AGRO)
+
+Tu proyecto **DORN AGRO** está configurado como proyecto destacado (`config/stores.json` → `portfolio`): aparece en la portada y en cada tienda, con capturas en `public/portafolio/` y el botón “Ver el sitio en vivo”. La IA también lo conoce y lo menciona como ejemplo de lo que hacemos (a clientes directos con enlace; en Fiverr sin enlaces externos, porque no están permitidos).
+
+- Revisa que `url` apunte a la dirección real donde está publicado (por defecto `https://joakovrd-designer.github.io/dorn-agro/`).
+- **Galería para tus gigs de Fiverr**: `portafolio/fiverr/` tiene 3 imágenes de 1280×769 (el tamaño recomendado por Fiverr) hechas con capturas reales de DORN AGRO. Súbelas en *Gig → Gallery*. Fiverr no permite enlaces externos en la descripción: la galería es donde se muestra el portafolio.
+- Para agregar más proyectos, suma entradas a `portfolio` (el que tenga `"featured": true` es el que se muestra).
+
 ## Cobrar sin comisión de plataforma
 
 Con los clientes que llegan **por tus tiendas propias o por contacto directo** (redes sociales, Google, recomendados) cobras directo por PayPal, Mercado Pago, etc. y te quedas con casi todo (solo la comisión del medio de pago, ~3-5 %, en vez del 20 % de Fiverr):

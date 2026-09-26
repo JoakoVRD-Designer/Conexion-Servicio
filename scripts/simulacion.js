@@ -348,6 +348,7 @@ await step("9. IA: redacta la respuesta y el dueño la envía (portal + email)",
   const draft = db.getOrder(id).ai.draftReply;
   check(draft.length > 20, "borrador generado");
   if (!realAI) check(captured.aiRequests.at(-1).system.includes("discord.gg/estudioweb"), "a clientes directos la IA puede ofrecer el Discord del negocio");
+  if (!realAI) check(captured.aiRequests.at(-1).system.includes("joakovrd-designer.github.io/dorn-agro"), "a clientes directos la IA puede compartir el enlace del portafolio (DORN AGRO)");
   const detail = await text(get(`/admin/pedidos/${id}`, AUTH));
   check(detail.includes(draft.slice(0, 30).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;")), "el borrador aparece listo para enviar");
   await post(`/admin/pedidos/${id}/mensaje`, form({ from: "yo", text: draft }), ADMIN);
@@ -495,6 +496,7 @@ await step("21. Reglas de Fiverr: nada de PayPal, Discord, WhatsApp ni portal ex
   await post(`/admin/pedidos/${fid}/ia/respuesta`, form({}), ADMIN);
   await waitJob(fid);
   if (!realAI) check(captured.aiRequests.at(-1).system.includes("Nunca pidas ni ofrezcas email, teléfono, WhatsApp, Discord"), "la IA recibe la prohibición de sacar al cliente de Fiverr");
+  if (!realAI) check(captured.aiRequests.at(-1).system.includes("DORN AGRO") && !captured.aiRequests.at(-1).system.includes("github.io"), "la IA conoce el portafolio (DORN AGRO) pero sin enlace externo en Fiverr");
   check(!/paypal|discord\.gg|wa\.me/i.test(db.getOrder(fid).ai.draftReply), "el borrador de la IA no incluye contactos ni pagos externos");
 });
 

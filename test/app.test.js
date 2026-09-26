@@ -138,3 +138,15 @@ test("Discord se ofrece solo a clientes directos, nunca en marketplaces", async 
   const fiverr = getOrder("WEB-0002");
   assert.ok(!(await (await fetch(`${base}/o/${fiverr.token}`)).text()).includes("discord"));
 });
+
+test("portafolio: DORN AGRO aparece como proyecto destacado en la portada y en las tiendas", async () => {
+  for (const url of ["/", "/s/restaurantes", "/s/landing-pro"]) {
+    const page = await (await fetch(base + url)).text();
+    assert.match(page, /Proyecto destacado/, url);
+    assert.match(page, /DORN AGRO/, url);
+    assert.match(page, /\/portafolio\/dorn-agro-portada\.jpg/, url);
+  }
+  const img = await fetch(`${base}/portafolio/dorn-agro-panel.jpg`);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get("content-type"), "image/jpeg");
+});

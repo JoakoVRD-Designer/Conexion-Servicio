@@ -66,11 +66,12 @@ export function getCatalog() {
       if (ids.has(s.id)) throw new Error(`Tienda duplicada en stores.json: ${s.id}`);
       ids.add(s.id);
     }
-    cache = { currency: raw.currency || "USD", contact: raw.contact || {}, payments: raw.payments || {}, stores: raw.stores };
+    cache = { currency: raw.currency || "USD", contact: raw.contact || {}, payments: raw.payments || {}, portfolio: raw.portfolio || [], stores: raw.stores };
   }
   return cache;
 }
 export const getStores = () => getCatalog().stores;
 export const getStore = (id) => getStores().find((s) => s.id === id);
 export const getStoreBySlug = (slug) => getStores().find((s) => s.slug === slug);
+export const getFeaturedProject = () => getCatalog().portfolio.find((p) => p.featured) ?? getCatalog().portfolio[0];
 export const getPackage = (store, pkgId) => store?.packages.find((p) => p.id === pkgId);

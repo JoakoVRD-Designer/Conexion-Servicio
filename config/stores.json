@@ -22,6 +22,38 @@
     "depositPercent": 50,
     "feePercent": 5.4
   },
+  "_portfolio_ayuda": "Tus proyectos para mostrar en las tiendas. El destacado (featured) aparece en la portada y en cada tienda. Las imágenes van en public/portafolio/.",
+  "portfolio": [
+    {
+      "id": "dorn-agro",
+      "featured": true,
+      "title": "DORN AGRO",
+      "category": "Sitio web + app instalable + IoT + IA",
+      "summary": "Plataforma de riego inteligente: portada cinematográfica con video que avanza con el scroll, app web instalable en el celular (PWA), panel en tiempo real conectado a un ESP32-S3, inicio de sesión con Google y asistentes de IA.",
+      "highlights": [
+        "Animación de video controlada por el scroll",
+        "Panel en tiempo real con control de equipos (MQTT)",
+        "App instalable sin tiendas (PWA)",
+        "Asistentes de IA y alertas de clima",
+        "Diseño oscuro premium, perfecto en el celular"
+      ],
+      "url": "https://joakovrd-designer.github.io/dorn-agro/",
+      "images": [
+        {
+          "src": "/portafolio/dorn-agro-portada.jpg",
+          "alt": "Portada de DORN AGRO con título sobre un campo al atardecer"
+        },
+        {
+          "src": "/portafolio/dorn-agro-panel.jpg",
+          "alt": "Panel de DORN AGRO con sensores y control de la bomba en tiempo real"
+        },
+        {
+          "src": "/portafolio/dorn-agro-movil.jpg",
+          "alt": "DORN AGRO en tres pantallas de celular"
+        }
+      ]
+    }
+  ],
   "stores": [
     {
       "id": "fiverr-landing",

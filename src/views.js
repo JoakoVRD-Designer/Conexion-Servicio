@@ -1,5 +1,5 @@
 // Plantillas HTML. Todo valor interpolado se escapa salvo que se marque con raw().
-import { STATUSES, CHANNELS, statusLabel, getStore, getPackage, getCatalog, isMarketplace } from "./config.js";
+import { STATUSES, CHANNELS, statusLabel, getStore, getPackage, getCatalog, getFeaturedProject, isMarketplace } from "./config.js";
 import { paymentStatus, paymentOptions, paymentInstructions } from "./payments.js";
 import { revisionInfo, downloadAllowed } from "./flows.js";
 import { LABELS, MAX_FILES_PER_ORDER } from "./sites.js";
@@ -34,10 +34,29 @@ ${admin ? html`<nav class="topnav"><a href="/admin" class="brand">⚡ Conexión 
 
 // ---------------------------------------------------------------- Público
 
+// Proyecto destacado del portafolio (config/stores.json → portfolio).
+function featuredProject() {
+  const p = getFeaturedProject();
+  if (!p) return "";
+  const safeUrl = /^https:\/\//i.test(p.url || "") ? p.url : "";
+  return html`<section class="showcase" aria-labelledby="showcase-title">
+  <div class="showcase-text">
+    <p class="showcase-tag">Proyecto destacado · ${p.category}</p>
+    <h2 id="showcase-title">${p.title}</h2>
+    <p>${p.summary}</p>
+    <ul>${(p.highlights || []).map((h) => html`<li>${h}</li>`)}</ul>
+    ${safeUrl ? html`<a class="btn" href="${safeUrl}" target="_blank" rel="noopener">Ver el sitio en vivo ↗</a>` : ""}
+  </div>
+  <div class="showcase-media">${(p.images || []).slice(0, 3).map((img, i) => html`<img class="shot shot-${i}" src="${img.src}" alt="${img.alt || p.title}" loading="${i ? "lazy" : "eager"}" width="1440" height="900">`)}</div>
+</section>`;
+}
+
 export function homePage(stores) {
   return layout({
     title: "Diseño de páginas web",
     body: html`<header class="hero"><h1>Páginas web profesionales para tu negocio</h1><p>Elige la especialidad que mejor encaje contigo.</p></header>
+${featuredProject()}
+<h2 class="section-title">Elige tu especialidad</h2>
 <div class="grid">${stores.map((s) => html`<a class="card store-card" href="/s/${s.slug}" style="--accent:${s.accent}">
   <h2>${s.name}</h2><p>${s.tagline}</p><span class="muted">Desde ${money(Math.min(...s.packages.map((p) => p.price)))}</span></a>`)}</div>`,
   });
@@ -53,6 +72,7 @@ export function storePage(store, error, form = {}) {
   <h3>${p.name}</h3><div class="price">${money(p.price)}</div>
   <p class="muted">Entrega en ${p.deliveryDays} días · ${p.revisions} revisiones</p>
   <ul>${p.features.map((f) => html`<li>${f}</li>`)}</ul></div>`)}</section>
+${featuredProject()}
 ${isFiverr
   ? html`<section class="card center"><p>Este servicio se contrata por Fiverr, con pago protegido.</p>
       ${store.externalUrl ? html`<a class="btn" href="${store.externalUrl}" target="_blank" rel="noopener">Ver el servicio en Fiverr</a>` : ""}</section>`
