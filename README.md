@@ -111,6 +111,7 @@ Tu proyecto **DORN AGRO** está configurado como proyecto destacado (`config/sto
 
 - Revisa que `url` apunte a la dirección real donde está publicado (por defecto `https://joakovrd-designer.github.io/dorn-agro/`).
 - **Galería para tus gigs de Fiverr**: `portafolio/fiverr/` tiene 3 imágenes de 1280×769 (el tamaño recomendado por Fiverr) hechas con capturas reales de DORN AGRO. Súbelas en *Gig → Gallery*. Fiverr no permite enlaces externos en la descripción: la galería es donde se muestra el portafolio.
+- **Regenerar las imágenes** cuando cambie la demo: sirve el sitio de DORN AGRO y ejecuta `npm run portafolio -- --sitio http://127.0.0.1:8765/` (usa Google Chrome instalado o `CHROME_PATH`).
 - Para agregar más proyectos, suma entradas a `portfolio` (el que tenga `"featured": true` es el que se muestra).
 
 ## Cobrar sin comisión de plataforma
